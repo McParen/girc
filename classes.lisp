@@ -37,3 +37,11 @@
     :documentation ""))
 
   (:documentation "IRC message received from an IRC server and parsed."))
+
+;; print the parsed contents of ircmsg in the repl.
+;; http://stackoverflow.com/questions/7382122/lisp-how-to-override-default-string-representation-for-clos-class
+;; http://clhs.lisp.se/Body/f_pr_obj.htm
+;; http://clhs.lisp.se/Body/m_pr_unr.htm
+(defmethod print-object ((obj ircmsg) out)
+  (print-unreadable-object (obj out :type t)
+    (format out "~s ~s ~A ~s" (.prefix obj) (.command obj) (.params obj) (.text obj))))
