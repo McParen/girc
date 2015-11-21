@@ -80,7 +80,7 @@
               nil))))
 
 ;; (parse ":prefix command p1 p2 p3 :text1 text2") => ("prefix" "command" ("p1" "p2" "p3") "text1 text2")
-(defun parse (ircstr)
+(defun parse2 (ircstr)
   "Take a string containing an irc message, return a list with parsed components."
   (let* ((lst1 (get-prefix-and-command ircstr))
          (lst2 (get-params-and-text lst1)))
@@ -90,3 +90,9 @@
 ;; count #\: str
 ;; subseq str 0 5
 ;; coerce str 'list, coerce lst 'string
+
+(defun parse (ircstr)
+  "Take a string containing an irc message, return a irc message object."
+  (let* ((lst1 (get-prefix-and-command ircstr))
+         (lst2 (get-params-and-text lst1)))
+    (make-instance 'ircmsg :prefix (car lst1) :command (cadr lst1) :params (car lst2) :text (cadr lst2))))
