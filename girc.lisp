@@ -40,14 +40,27 @@
                (return inbuf)
                (setf (fill-pointer inbuf) 0) )))))))
 
+;; the cursor can not work in a multithreaded mode, there is only one cursor,
+;; and it has to jump back and forth between multiple windows.
 (defun ui ()
   (with-screen (scr :input-echoing nil :cursor-visibility t :enable-colors nil)
-    (let* ((wout (make-instance 'window :height (1- (.height scr)) :width (.width scr) :enable-scrolling t :position '(0 0)))
-           (win (make-instance 'window :height 1 :width (.width scr) :position (list (1- (.height scr)) 0) :enable-fkeys t :input-blocking nil))
+    (let* ((wout (make-instance 'window
+                                :height (1- (.height scr))
+                                :width (.width scr)
+                                :position '(0 0)
+                                :enable-scrolling t))
+           (win  (make-instance 'window
+                                :height 1
+                                :width (.width scr)
+                                :position (list (1- (.height scr)) 0)
+                                :enable-fkeys t
+                                :input-blocking nil))
            (so (usocket:socket-connect "185.30.166.37" 6667))
            (st (usocket:socket-stream so))
+           ;; no of chars in the input line.
            (n 0))
       (login st)
+      
       (event-case (win event)
         (:left 
          (when (> (cadr (.cursor-position win)) 0)
@@ -72,9 +85,15 @@
            (decf n)
            (move-by win 0 -1)
            (delete-char win)))
+        
         (#\q (return-from event-case))
 
+        ;; we cant make this input-blocking nil instead of event (nil), because
+        ;; we have to check for input during the nil event.
+        ;; a much better way way would be to use separate threads for ui events and
+        ;; network events.
         ((nil)
+         (sleep 0.01)
          (when (listen st)
            (let ((line (read-irc-line st)))
              (when (and line (eq line :eof) (return-from event-case)))
@@ -83,10 +102,12 @@
                (terpri wout)
                (refresh wout)))))
 
+        ;; non-function keys, i.e. normal character keys
         (otherwise
          (when (and (typep event 'standard-char)
                     (< (cadr (.cursor-position win)) (1- (.width win))))
            (incf n)
            (format win "~A" event))))
+
       (close win)
       (close wout))))
