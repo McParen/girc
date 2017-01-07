@@ -7,6 +7,12 @@
   (princ string stream)
   (force-output stream))
 
+(defun connect (server port)
+  "Take a hostname or IP and a port, connect to the irc server, return a server stream."
+  (let* ((socket (usocket:socket-connect server port))
+         (stream (usocket:socket-stream socket)))
+    stream))
+
 ;; soll sofort nach dem socket-connect gesendet werden.
 ;; erst wenn der login angekommen ist, sendet der server 001.
 (defun login (s)
@@ -55,10 +61,11 @@
                                 :position (list (1- (.height scr)) 0)
                                 :enable-fkeys t
                                 :input-blocking nil))
-           (so (usocket:socket-connect "185.30.166.37" 6667))
-           (st (usocket:socket-stream so))
+           (st (connect "185.30.166.37" 6667))
            ;; no of chars in the input line.
            (n 0))
+
+      ;; 
       (login st)
       
       (event-case (win event)
@@ -86,7 +93,7 @@
            (move-by win 0 -1)
            (delete-char win)))
         
-        (#\q (return-from event-case))
+        (#\Q (return-from event-case))
 
         ;; we cant make this input-blocking nil instead of event (nil), because
         ;; we have to check for input during the nil event.
