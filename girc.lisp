@@ -1,28 +1,34 @@
 (in-package :de.anvi.girc)
 
-(defun stream-print (string stream)
-  ;; we have to do princ instead of print to the irc server.
-  ;; print outputs for the lisp reader and includes double quotes with strings.
-  ;; the irc server bails on double quotes, it wants just ascii chars.
-  (princ string stream)
-  (force-output stream))
-
 (defun connect (server port)
   "Take a hostname or IP and a port, connect to the irc server, return a server stream."
   (let* ((socket (usocket:socket-connect server port))
          (stream (usocket:socket-stream socket)))
     stream))
 
-;; soll sofort nach dem socket-connect gesendet werden.
-;; erst wenn der login angekommen ist, sendet der server 001.
-(defun login (s)
-  ;; nick und user sind zwei verschiedene commands, deswegen muessen das zwei separate zeilen sein.
-  ;; wir koennen nicht zwei befehle in einer zeile schicken.
-  (stream-print (format nil "NICK haom~C~C" #\return #\linefeed) s)
-  (stream-print (format nil "USER haom 0 0 :haom~C~C" #\return #\linefeed) s))
+(defun raw (stream irc-msg-string)
+  "Send a string containing a valid IRC message to an IRC server."
+  (format stream "~A~C~C" irc-msg-string #\return #\linefeed)
+  (force-output stream))
 
-(defun logout (s)
-  (stream-print (format nil "QUIT~C~C" #\return #\linefeed) s))
+(defun login (stream nickname)
+  "Login to an IRC server with a nick name and a user name.
+
+This is the first command that should be sent after a connection is established.
+
+If the login is successful, the server should reply with a 001 message."
+  (raw stream (format nil "NICK ~A" nickname))
+  (raw stream (format nil "USER ~A 0 0 :~A" nickname nickname)))
+
+
+;; QUIT :Gone to have lunch
+;; :syrk!kalt@millennium.stealth.net QUIT :Gone to have lunch
+;; ERROR :Closing Link: 5.146.114.134 (Client Quit)
+(defun quit (stream &optional (quit-msg "Bye"))
+  "Cleanly QUIT an IRC connection and send a message to the joined channels.
+
+The server acknowledges this by sending an ERROR message to the client."
+  (raw stream (format nil "QUIT :~A" quit-msg)))
 
 ;; graphic-char-p, dann geht aber dcc nicht.
 (defun read-irc-line (stream)
@@ -65,8 +71,7 @@
            ;; no of chars in the input line.
            (n 0))
 
-      ;; 
-      (login st)
+      (login st "haom")
       
       (event-case (win event)
         (:left 
@@ -79,7 +84,7 @@
          (let ((*standard-output* wout))
            (when (> n 0)
              (let* ((strin (extract-string win :n n :y 0 :x 0)))
-               (stream-print (format nil "~A~C~C" strin #\return #\linefeed) st)
+               (raw st strin)
                (setf n 0)
                (clear win) 
                (refresh wout)))))
@@ -92,7 +97,8 @@
            (decf n)
            (move-by win 0 -1)
            (delete-char win)))
-        
+
+        (#\r (quit st))
         (#\Q (return-from event-case))
 
         ;; we cant make this input-blocking nil instead of event (nil), because
@@ -105,7 +111,8 @@
            (let ((line (read-irc-line st)))
              (when (and line (eq line :eof) (return-from event-case)))
              (when line
-               (princ line wout)
+               ;;(princ line wout)
+               (princ (parse line) wout)
                (terpri wout)
                (refresh wout)))))
 
