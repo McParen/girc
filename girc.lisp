@@ -4,8 +4,10 @@
   "Take a hostname or IP and a port, connect to the irc server, return a server stream."
   (let* ((socket (usocket:socket-connect server port))
          (stream (usocket:socket-stream socket)))
+    ;; return the stream of the created client socket
     stream))
 
+;; todo: check that the string is max 512 bytes long.
 (defun raw (stream irc-msg-string)
   "Send a string containing a valid IRC message to an IRC server."
   (format stream "~A~C~C" irc-msg-string #\return #\linefeed)
@@ -20,6 +22,14 @@ If the login is successful, the server should reply with a 001 message."
   (raw stream (format nil "NICK ~A" nickname))
   (raw stream (format nil "USER ~A 0 0 :~A" nickname nickname)))
 
+;; TODO: rewrite raw to work like format:
+;; (raw stream "USER ~A 0 0 :~A" nick nick)
+;; instead of
+;; (raw stream (format nil "USER ~A 0 0 :~A" nickname nickname)))
+
+;; TODO: hide the irc protocol behind gray streams:
+;; (format stream "USER ~A 0 0 :~A" nickname nickname)
+;; should automatically add \r and \n at the end of each message.
 
 ;; QUIT :Gone to have lunch
 ;; :syrk!kalt@millennium.stealth.net QUIT :Gone to have lunch
@@ -35,6 +45,9 @@ The server acknowledges this by sending an ERROR message to the client."
   (let ((inbuf (make-array 0 :element-type 'character :fill-pointer 0 :adjustable t)) ;; empty string ""
         (ch-prev nil))
     (loop
+       ;; this will not work with utf-8 encoded chars.
+       ;; TODO: we can not reach lisp "chars", we have to read octets and put them together to chars.
+       ;; we have to use something like read-byte instead of read-char
        (let ((ch (read-char-no-hang stream nil :eof)))
          (when ch
            (progn
@@ -76,17 +89,19 @@ The server acknowledges this by sending an ERROR message to the client."
       (event-case (win event)
         (:left 
          (when (> (cadr (.cursor-position win)) 0)
-           (move-by win 0 -1)))
+           (move-to win :left)))
         (:right 
          (when (< (cadr (.cursor-position win)) n)
-           (move-by win 0 1)))
+           (move-to win :right)))
         (#\newline
          (let ((*standard-output* wout))
            (when (> n 0)
-             (let* ((strin (extract-string win :n n :y 0 :x 0)))
+             (let* ((strin (extract-wide-string win :n n :y 0 :x 0)))
+               ;; TODO: add command line parsing and evaluation here.
                (raw st strin)
                (setf n 0)
-               (clear win) 
+               (clear win)
+               (add-string wout (format nil "=> ~A~%" strin))
                (refresh wout)))))
         (:dc
          (when (> n (cadr (.cursor-position win)))
@@ -95,10 +110,15 @@ The server acknowledges this by sending an ERROR message to the client."
         (:backspace
          (when (> (cadr (.cursor-position win)) 0)
            (decf n)
-           (move-by win 0 -1)
+           (move-to win :left)
            (delete-char win)))
 
-        (#\r (quit st))
+        ;; send a quit message to the irc server, cleanly disconnect
+        ;; TODO: remove this later
+        (#\R (quit st))
+
+        ;; quit the client, go back to the lisp repl
+        ;; TODO: remove this later
         (#\Q (return-from event-case))
 
         ;; we cant make this input-blocking nil instead of event (nil), because
@@ -107,21 +127,48 @@ The server acknowledges this by sending an ERROR message to the client."
         ;; network events.
         ((nil)
          (sleep 0.01)
+         ;; return t if there is a char available
          (when (listen st)
            (let ((line (read-irc-line st)))
              (when (and line (eq line :eof) (return-from event-case)))
              (when line
+               ;; save excursion prevents that the cursor jumps between windows.
+               ;; it should always stay in the input window.
+               (save-excursion win
                ;;(princ line wout)
-               (princ (parse line) wout)
+               ;;(princ (parse line) wout)
+               ;; TODO: add irc event handling here.
+               ;; TODO: add a logger here.
+               ;; http://picolisp.com/wiki/?ircclient
+               (let* ((msg (parse line))
+                      (event (.command msg)))
+                 ;; in old girc.scm, at this point we passed msg to evaluate-message
+                 ;; we will always upcase commands before comparing them.
+                 (cond
+                   ((string= event "PRIVMSG")
+                    ;; only format PRIVMSGs
+                    (princ (format nil "~A: ~A" (car (get-nick-user-host (.prefix msg))) (.text msg)) wout))
+                   ((string= event "PING")
+                    ;; TODO: before we send anything, we craft a proper irc message, then we send a message object,
+                    ;; and before it gets sent it is serialized into a string.
+                    (princ (format nil "PONG :~A" (.text msg)) wout)
+                    (terpri wout)
+                    (raw st (format nil "PONG :~A" (.text msg))))
+
+                   ;; ignore 353, 372, JOIN, QUIT, PART, NOTICE
+                   ((string= event "353") nil) ; nicklist
+                   ((string= event "372") nil) ; motd
+
+                   (t (princ msg wout))))));print other messages verbatim
                (terpri wout)
-               (refresh wout)))))
+               (refresh wout))))
 
         ;; non-function keys, i.e. normal character keys
         (otherwise
-         (when (and (typep event 'standard-char)
+         (when (and (characterp event)
                     (< (cadr (.cursor-position win)) (1- (.width win))))
            (incf n)
-           (format win "~A" event))))
+           (add-wide-char win event))))
 
       (close win)
       (close wout))))

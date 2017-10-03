@@ -67,6 +67,22 @@
           (list (subseq t1 1) t2 r2))
         (list nil t1 r1))))
 
+(defun string-any (str1 str2)
+  "Return t if any char from str1 is in str2, nil otherwise."
+  (if (some #'(lambda (i) (find i str2)) str1) t nil))
+
+;; (string-tokenize "!@" "n!u@h") => ("n" "u" "h")
+(defun string-tokenize (str1 str2)
+  "Return a list of substrings of str2 split on chars from str1."
+  (values (split-sequence:split-sequence-if #'(lambda (i) (position i str1)) str2 :remove-empty-subseqs t)))
+
+;; type of prefix: nick-user-host or just a host
+
+(defun get-nick-user-host (prefix)
+  (if (string-any "!@" prefix)
+      (string-tokenize "!@" prefix)
+      (list prefix "" "")))
+
 ;; (get-params-and-text '("prefix" "command" "p1 p2 p3 :text1 text2")) => (("p1" "p2" "p3") "text1 text2")
 ;; (get-params-and-text '(NIL "command" "p1 p2 p3 :text1 text2")) => (("p1" "p2" "p3") "text1 text2")
 (defun get-params-and-text (lst)
