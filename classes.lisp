@@ -5,35 +5,35 @@
     :initarg :server
     :initform nil
     :accessor .server
-    :type string
+    :type (or null string)
     :documentation "Name of the IRC server which sent the message.")
 
    (prefix
     :initarg :prefix
     :initform nil
     :accessor .prefix
-    :type string
+    :type (or null string)
     :documentation "Origin of the message.")
 
    (command
     :initarg :command
     :initform nil
     :accessor .command
-    :type string
+    :type (or null string)
     :documentation "")
 
    (params
     :initarg :params
     :initform nil
     :accessor .params
-    :type cons
+    :type (or null cons)
     :documentation "List of strings denoting the parameters.")
 
    (text
     :initarg :text
     :initform nil
     :accessor .text
-    :type string
+    :type (or null string)
     :documentation ""))
 
   (:documentation "IRC message received from an IRC server and parsed."))
@@ -43,5 +43,6 @@
 ;; http://clhs.lisp.se/Body/f_pr_obj.htm
 ;; http://clhs.lisp.se/Body/m_pr_unr.htm
 (defmethod print-object ((obj ircmsg) out)
+  ;; unreadable objects are printed as <# xyz >
   (print-unreadable-object (obj out :type t)
-    (format out "~s ~s ~A ~s" (.prefix obj) (.command obj) (.params obj) (.text obj))))
+    (format out "~S / ~S / ~S / ~S" (.prefix obj) (.command obj) (.params obj) (.text obj))))
