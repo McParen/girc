@@ -11,4 +11,5 @@
     :components ((:file "package")
                  (:file "classes")
                  (:file "parse")
-                 (:file "girc")))
+                 (:file "girc")
+                 (:file "event")))
