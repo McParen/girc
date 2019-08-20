@@ -1,5 +1,5 @@
 (cl:defpackage :de.anvi.girc
-  (:use :common-lisp :split-sequence :de.anvi.croatoan)
+  (:use :common-lisp :split-sequence)
   (:nicknames #:g #:girc)
   (:export
 
