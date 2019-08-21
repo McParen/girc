@@ -1,5 +1,7 @@
 (in-package :de.anvi.girc)
 
+;; TODO: this should be done during the initialization of the connection object
+;; TODO: defclass 'connection
 (defun connect (hostname port)
   "Take a hostname (string) or IP and a port (integer), connect to the irc server, return a server stream."
   (let* ((socket (usocket:socket-connect hostname port))
@@ -7,50 +9,58 @@
     ;; return the stream of the created client socket
     stream))
 
-(defun send (stream message-template &rest args)
-  "Make an IRC message from the template and args, then write it to the stream.
+;; TODO: check that the string is max 512 bytes long.
+(defun send (stream ircmsg &rest args)
+  "Send an irc message string to the stream.
 
-An IRC CRLF \r\n ending is added to the message before it is sent.
+A proper CRLF \r\n ending is added to the message before it is sent.
 
-The allowed max length of the message including CRLF is 512 bytes."
+If there are additional args, ircmsg has to be a template accepting
+the proper number of format-style control strings.
+
+The allowed max length of the irc message including CRLF is 512 bytes."
   (apply #'format stream
          ;; then append it to the template before passing it to format.
-         (concatenate 'string message-template
+         (concatenate 'string ircmsg
                       ;; create a string out of \r and \n, crlf.
                       (coerce '(#\return #\linefeed) 'string))
          args)
   (force-output stream))
 
-;; TODO: pass nick user and text as keywords instead of only using nickname
-(defun login (stream nickname)
-  "Login to an IRC server with a nickname and a username.
+(defun nick (stream nickname)
+  "Give the user a new nickname during registration or change the existing one."
+  (send stream "NICK ~A" nickname))
+
+(defun user (stream username mode realname)
+  "Specify the username, mode and realname of a new user when registering a connection."
+  ;; "USER ~A 0 0 :~A"
+  (send stream "USER ~A ~A * :~A" username mode realname))
+
+(defun register (stream nickname mode username realname)
+  "Register a connection to an irc server with a nickname and a username.
 
 This is the first command that should be sent after a connection is established.
 
-If the login is successful, the server should reply with a 001 message."
-  (send stream "NICK ~A" nickname)
-  (send stream "USER ~A 0 0 :~A" nickname nickname))
-
-;; TODO: rewrite send to work like format:
-;; (send stream "USER ~A 0 0 :~A" nick nick)
-;; instead of
-;; (send stream (format nil "USER ~A 0 0 :~A" nickname nickname)))
-
-;; TODO: hide the irc protocol behind gray streams:
-;; (format stream "USER ~A 0 0 :~A" nickname nickname)
-;; should automatically add \r and \n at the end of each message.
+Upon success, the server will reply with a 001 RPL_WELCOME message."
+  (nick stream nickname)
+  (user stream username mode realname))
 
 ;; QUIT :Gone to have lunch
 ;; :syrk!kalt@millennium.stealth.net QUIT :Gone to have lunch
 ;; ERROR :Closing Link: 5.146.114.134 (Client Quit)
-(defun quit (stream &optional (quit-msg "Bye"))
+(defun quit (stream &optional (quit-message "Bye"))
   "Cleanly QUIT an IRC connection and send a message to the joined channels.
 
 The server acknowledges this by sending an ERROR message to the client."
-  (send stream "QUIT :~A" quit-msg))
+  (send stream "QUIT :~A" quit-message))
 
-;; graphic-char-p, dann geht aber dcc nicht.
-;; TODO: do not read characters, read byte by byte, then interpret them as ASCII, ANSI (latin1) or UTF-8.
+;; read-byte from stream
+;; utf8-to-unicode byte list to character
+;; char list to string
+
+;; graphic-char-p, dann geht aber dcc ^A nicht.
+;; TODO: do not read lisp characters, read byte by byte (octet by octet), then interpret them as ANSI (latin1) or ASCII/UTF-8.
+;; TODO: read chars byte by byte to a list first, then convert to a string.
 (defun read-irc-line (stream)
   (let ((inbuf (make-array 0 :element-type 'character :fill-pointer 0 :adjustable t)) ;; empty string ""
         (ch-prev nil))
@@ -84,55 +94,71 @@ The server acknowledges this by sending an ERROR message to the client."
                ;;(setf (fill-pointer inbuf) 0)
                )))))))
 
+;; TODO: use edit-field instead of writing our own edit commands.
+;; TODO: 190102 only switch to fields when we have implemented horizontal scrolling in fields.
+;; this is old code from before we had form editing in croatoan.
 (defun ui ()
-  (with-screen (scr :input-echoing nil :cursor-visibility t :enable-colors nil)
-    (let* ((wout (make-instance 'window
-                                :height (1- (.height scr))
-                                :width (.width scr)
-                                :position '(0 0)
+  (crt:with-screen (scr :input-echoing nil :cursor-visible t :enable-colors nil)
+    (let* ((wout (make-instance 'crt:window
+                                :height (1- (crt:height scr))
+                                :width (crt:width scr)
+                                :location '(0 0)
                                 :enable-scrolling t))
-           (win  (make-instance 'window
+           (win  (make-instance 'crt:window
                                 :height 1
-                                :width (.width scr)
-                                :position (list (1- (.height scr)) 0)
-                                :enable-fkeys t
+                                :width (crt:width scr)
+                                :location (list (1- (crt:height scr)) 0)
+                                :enable-function-keys t
                                 ;; note that when this is nil, we plan to perform work during the nil event.
                                 :input-blocking nil))
-           (st (connect "185.30.166.37" 6667))
+
+           ;; TODO: dont do automatically, turn into a user command.
+           (st (connect "chat.freenode.net" 6667))
+           ;;(st (connect "irc.efnet.org" 6667))
+           ;;(st (connect "irc.de.ircnet.net" 6667))
+
            ;; no of chars in the input line.
            (n 0)
+           
            ;; line length for lisp pretty printing functions
-           (*print-right-margin* (.width scr)))
+           (*print-right-margin* (crt:width scr)))
 
-      (login st "haom")
-      
-      (event-case (win event)
+      ;; TODO: do not connect and register automatically upon starting the client, make this an user command.
+      (register st "haom" 0 "myuser" "Realname")
+
+      ;; TODO: dont use event-case, convert to bind + run-event-loop.
+      (crt:event-case (win event)
         (:left
-         (when (> (cadr (.cursor-position win)) 0)
-           (move-to win :left)))
+         (when (> (cadr (crt:cursor-position win)) 0)
+           (crt:move-direction win :left)))
         (:right 
-         (when (< (cadr (.cursor-position win)) n)
-           (move-to win :right)))
+         (when (< (cadr (crt:cursor-position win)) n)
+           (crt:move-direction win :right)))
         (#\newline
          (let ((*standard-output* wout))
            (when (> n 0)
-             (let* ((strin (extract-wide-string win :n n :y 0 :x 0)))
+             
+             ;; TODO: use input buffer instead of reading from ncurses window.
+             ;; see how input buffers are implemented in croatoan forms.
+             (let* ((strin (crt:extract-wide-string win :n n :y 0 :x 0)))
+
                ;; for now, hitting enter just sends the line as a raw irc message
                ;; TODO: add command line parsing and evaluation here.
                (send st strin)
+
                (setf n 0)
-               (clear win)
-               (add-string wout (format nil "=> ~A~%" strin))
-               (refresh wout)))))
+               (crt:clear win)
+               (crt:add-string wout (format nil "=> ~A~%" strin))
+               (crt:refresh wout)))))
         (:dc
-         (when (> n (cadr (.cursor-position win)))
+         (when (> n (cadr (crt:cursor-position win)))
            (decf n)
-           (delete-char win)))
+           (crt:delete-char win)))
         (:backspace
-         (when (> (cadr (.cursor-position win)) 0)
+         (when (> (cadr (crt:cursor-position win)) 0)
            (decf n)
-           (move-to win :left)
-           (delete-char win)))
+           (crt:move-direction win :left)
+           (crt:delete-char win)))
 
         ;; send a quit message to the irc server, cleanly disconnect
         ;; TODO: remove this later
@@ -140,35 +166,41 @@ The server acknowledges this by sending an ERROR message to the client."
 
         ;; quit the client, go back to the lisp repl
         ;; TODO: remove this later
-        (#\Q (return-from event-case))
+        (#\Q (return-from crt:event-case))
 
         ;; we cant make this input-blocking nil instead of event (nil), because
         ;; we have to check for input during the nil event.
         ;; a much better way way would be to use separate threads for ui events and
         ;; network events.
         ((nil)
+         ;; when input-blocking = nil, prevent high CPU load.
          (sleep 0.01)
-         ;; return t if there is a char available
+         ;; return t if there is a char available on the stream
          (when (listen st)
+           ;; TODO: server connection should hapen in a completely separate thread, not in the user input event loop.
+           ;; the thread should write server output to a shared buffer, and every time the buffer is updated,
+           ;; the output window should be redisplayed.
            (let ((line (read-irc-line st)))
              ;; TODO: should we quit main loop when the connection is at the EOF?
-             (when (and line (eq line :eof) (return-from event-case)))
+             (when (and line (eq line :eof) (return-from crt:event-case)))
              (when line
                ;; save excursion prevents that the cursor jumps between windows.
                ;; it should always stay in the input window.
-               (save-excursion win
+               (crt:save-excursion win
                  ;;(princ line wout)
                  ;;(princ (parse line) wout)
                  ;; TODO: add a logger here.
-                 (evaluate-message line wout st)))
-             (refresh wout))))
+                 (handle-message line wout st))) ;; --> event.lisp
+             (crt:refresh wout))))
 
         ;; non-function keys, i.e. normal character keys
         (otherwise
          (when (and (characterp event)
-                    (< (cadr (.cursor-position win)) (1- (.width win))))
+                    ;; dont allow the input line to be longer than the screen width.
+                    (< (cadr (crt:cursor-position win)) (1- (crt:width win))))
            (incf n)
-           (add-wide-char win event))))
+           ;; TODO: use add instead of add-wide-char.
+           (crt:add-wide-char win event))))
 
       (close win)
       (close wout))))

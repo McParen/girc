@@ -2,14 +2,14 @@
 
 ;; put every read char into an array of max 512 length.
 
-;; check if msg is max 512 chars.
+;; check if ircmsg is max 512 chars.
 
-;; check if message ends in crlf.
+;; check if irc-message ends in crlf.
 
-;; if msg starts with a colon, then cut to the second colon
-;; if msg doesnt start with a colon, then cut to the first colon.
+;; if ircmsg starts with a colon, then cut to the second colon
+;; if ircmsg doesnt start with a colon, then cut to the first colon.
 
-;; TODO: ":a b c g :d e f" => (":a" "b" "c" "g" ":d" "e" "f") => ircmsg object
+;; TODO: ":a b c g :d e f" => (":a" "b" "c" "g" ":d" "e" "f") => message object
 
 ;; ":prefix command p1 p2 p3 :text1 text2"
 ;; ":prefix command p1 p2 p3"
@@ -76,8 +76,9 @@
   "Return a list of substrings of str2 split on chars from str1."
   (values (split-sequence:split-sequence-if #'(lambda (i) (position i str1)) str2 :remove-empty-subseqs t)))
 
-;; type of prefix: nick-user-host or just a host
-
+;; type of prefix can be nick-user-host or just a host.
+;; (get-nick-user-host "nick!user@host") => ("nick" "user" "host")
+;; (get-nick-user-host "leo!~leo@host-205-241-38-153.acelerate.net") => ("leo" "~leo" "host-205-241-38-153.acelerate.net")
 (defun get-nick-user-host (prefix)
   (if (string-any "!@" prefix)
       (string-tokenize "!@" prefix)
@@ -96,9 +97,9 @@
               nil))))
 
 ;; (parse ":prefix command p1 p2 p3 :text1 text2") => ("prefix" "command" ("p1" "p2" "p3") "text1 text2")
-(defun parse2 (ircstr)
+(defun parse2 (ircmsg)
   "Take a string containing an irc message, return a list with parsed components."
-  (let* ((lst1 (get-prefix-and-command ircstr))
+  (let* ((lst1 (get-prefix-and-command ircmsg))
          (lst2 (get-params-and-text lst1)))
     (append (list (car lst1) (cadr lst1)) lst2)))
 
@@ -107,8 +108,8 @@
 ;; subseq str 0 5
 ;; coerce str 'list, coerce lst 'string
 
-(defun parse (ircstr)
+(defun parse (ircmsg)
   "Take a string containing an irc message, return a irc message object."
-  (let* ((lst1 (get-prefix-and-command ircstr))
+  (let* ((lst1 (get-prefix-and-command ircmsg))
          (lst2 (get-params-and-text lst1)))
-    (make-instance 'ircmsg :prefix (car lst1) :command (cadr lst1) :params (car lst2) :text (cadr lst2))))
+    (make-instance 'message :ircmsg ircmsg :prefix (car lst1) :command (cadr lst1) :params (car lst2) :text (cadr lst2))))
