@@ -3,45 +3,43 @@
 ;; irc-message, ircmsg = irc protocol message string
 ;; message, msg = parsed girc message object
 
-;; TODO: stop using .dotted prefixes
-
 (defclass message ()
   ((ircmsg
-    :initarg :ircmsg
-    :initform nil
-    :accessor ircmsg
-    :type (or null string)
-    :documentation "As received IRC protocol message string, without the CRLF ending.")
+    :initarg       :ircmsg
+    :initform      nil
+    :accessor      ircmsg
+    :type          (or null string)
+    :documentation "As-received IRC protocol message, without the CRLF ending. (Kept for debugging purposes.)")
 
    (prefix
-    :initarg :prefix
-    :initform nil
-    :accessor prefix
-    :type (or null string)
+    :initarg       :prefix
+    :initform      nil
+    :accessor      prefix
+    :type          (or null string)
     :documentation "Origin of the message.")
 
    (command
-    :initarg :command
-    :initform nil
-    :accessor command
-    :type (or null string)
-    :documentation "")
+    :initarg       :command
+    :initform      nil
+    :accessor      command
+    :type          (or null string)
+    :documentation "Three-digit numeric or text command.")
 
    (params
-    :initarg :params
-    :initform nil
-    :accessor params
-    :type (or null cons)
+    :initarg       :params
+    :initform      nil
+    :accessor      params
+    :type          (or null cons)
     :documentation "List of strings denoting the parameters.")
 
    (text
-    :initarg :text
-    :initform nil
-    :accessor text
-    :type (or null string)
-    :documentation ""))
+    :initarg       :text
+    :initform      nil
+    :accessor      text
+    :type          (or null string)
+    :documentation "Last parameter after the colon, usually denoting the body of the message."))
 
-  (:documentation "Parsed IRC message."))
+  (:documentation "Object representing a parsed IRC protocol message."))
 
 ;; print the parsed contents of ircmsg in the repl.
 ;; http://stackoverflow.com/questions/7382122/lisp-how-to-override-default-string-representation-for-clos-class

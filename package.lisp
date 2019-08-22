@@ -1,7 +1,6 @@
 (cl:defpackage :de.anvi.girc
   (:use :common-lisp :split-sequence)
-  (:nicknames #:g #:girc)
+  (:nicknames #:girc)
   (:export
-
    ;; girc.lisp
    ui))
