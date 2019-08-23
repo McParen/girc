@@ -68,8 +68,8 @@ The handler function takes four arguments:
         (cdr event-pair)
         nil)))
 
-(defun handle-message (irc-message wout stream)
-  (let* ((message (parse irc-message))
+(defun handle-irc-message (ircmsg wout stream)
+  (let* ((message (parse ircmsg))
          (event (validate (command message)))) ; return key or integer
     ;; TODO: does validate ever return nil?
     ;; if not, we dont have to check

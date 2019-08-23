@@ -61,7 +61,7 @@ The server acknowledges this by sending an ERROR message to the client."
 ;; graphic-char-p, dann geht aber dcc ^A nicht.
 ;; TODO: do not read lisp characters, read byte by byte (octet by octet), then interpret them as ANSI (latin1) or ASCII/UTF-8.
 ;; TODO: read chars byte by byte to a list first, then convert to a string.
-(defun read-irc-line (stream)
+(defun read-irc-message (stream)
   (let ((inbuf (make-array 0 :element-type 'character :fill-pointer 0 :adjustable t)) ;; empty string ""
         (ch-prev nil))
     (loop
@@ -94,113 +94,63 @@ The server acknowledges this by sending an ERROR message to the client."
                ;;(setf (fill-pointer inbuf) 0)
                )))))))
 
-;; TODO: use edit-field instead of writing our own edit commands.
-;; TODO: 190102 only switch to fields when we have implemented horizontal scrolling in fields.
-;; this is old code from before we had form editing in croatoan.
-(defun ui ()
+(defun make-ui (scr)
+  (let* ((wout (make-instance 'crt:window
+                              :height (1- (crt:height scr))
+                              :width (crt:width scr)
+                              :location '(0 0)
+                              :enable-scrolling t))
+         (win  (make-instance 'crt:window
+                              :height 1
+                              :width (crt:width scr)
+                              :location (list (1- (crt:height scr)) 0)
+                              :enable-function-keys t
+                              ;; note that when this is nil, we plan to perform work during the nil event.
+                              :input-blocking nil))
+         (field (make-instance 'crt:field :location (list 0 0) :width (crt:width scr) :window win
+                               :style (list :foreground nil :background nil))))
+    (setf *print-right-margin* (crt:width scr))
+    (list win wout field)))
+
+;; Handler of the nil event during a non-blocking edit of the field.
+;; TODO: check whether win is non-blocking before assuming it
+;; this should run in a separate thread
+(defun process-server-input (field event &rest args)
+  (destructuring-bind (stream win wout) args
+    (sleep 0.01)
+    (when (listen stream)
+      (let ((ircmsg (read-irc-message stream)))
+        (when ircmsg
+          (crt:save-excursion win
+            (handle-irc-message ircmsg wout stream) ;; see event.lisp
+            (crt:refresh wout)))))))
+
+;; use this instead of accept-field so we dont have to return from edit.
+(defun process-user-input (field event &rest args)
+  "When the field is used without a parent form, accepting the field edit returns the field value."
+  (with-accessors ((inbuf crt::buffer) (inptr crt::input-pointer) (dptr crt::display-pointer) (win crt:window)) field
+    (when (> (length inbuf) 0)
+      (let ((val (crt:value field)))
+        (destructuring-bind (stream win wout) args
+          (crt:clear win)
+          (setf inbuf nil inptr 0 dptr 0)
+          (send stream val)
+          (crt:save-excursion win
+            (format wout "=> ~A~%" val)
+            (crt:refresh wout)))))))
+
+(defun run (&optional (nickname "haom") (hostname "chat.freenode.net") (port 6667))
   (crt:with-screen (scr :input-echoing nil :cursor-visible t :enable-colors nil)
-    (let* ((wout (make-instance 'crt:window
-                                :height (1- (crt:height scr))
-                                :width (crt:width scr)
-                                :location '(0 0)
-                                :enable-scrolling t))
-           (win  (make-instance 'crt:window
-                                :height 1
-                                :width (crt:width scr)
-                                :location (list (1- (crt:height scr)) 0)
-                                :enable-function-keys t
-                                ;; note that when this is nil, we plan to perform work during the nil event.
-                                :input-blocking nil))
+    (destructuring-bind (win wout field) (make-ui scr)
+      (let ((stream (connect hostname port)))
+        (register stream nickname 0 "myuser" "Realname")
 
-           ;; TODO: dont do automatically, turn into a user command.
-           (st (connect "chat.freenode.net" 6667))
-           ;;(st (connect "irc.efnet.org" 6667))
-           ;;(st (connect "irc.de.ircnet.net" 6667))
+        (crt:bind field nil 'process-server-input)
+        (crt:bind field #\newline 'process-user-input)
 
-           ;; no of chars in the input line.
-           (n 0)
-           
-           ;; line length for lisp pretty printing functions
-           (*print-right-margin* (crt:width scr)))
-
-      ;; TODO: do not connect and register automatically upon starting the client, make this an user command.
-      (register st "haom" 0 "myuser" "Realname")
-
-      ;; TODO: dont use event-case, convert to bind + run-event-loop.
-      (crt:event-case (win event)
-        (:left
-         (when (> (cadr (crt:cursor-position win)) 0)
-           (crt:move-direction win :left)))
-        (:right 
-         (when (< (cadr (crt:cursor-position win)) n)
-           (crt:move-direction win :right)))
-        (#\newline
-         (let ((*standard-output* wout))
-           (when (> n 0)
-             
-             ;; TODO: use input buffer instead of reading from ncurses window.
-             ;; see how input buffers are implemented in croatoan forms.
-             (let* ((strin (crt:extract-wide-string win :n n :y 0 :x 0)))
-
-               ;; for now, hitting enter just sends the line as a raw irc message
-               ;; TODO: add command line parsing and evaluation here.
-               (send st strin)
-
-               (setf n 0)
-               (crt:clear win)
-               (crt:add-string wout (format nil "=> ~A~%" strin))
-               (crt:refresh wout)))))
-        (:dc
-         (when (> n (cadr (crt:cursor-position win)))
-           (decf n)
-           (crt:delete-char win)))
-        (:backspace
-         (when (> (cadr (crt:cursor-position win)) 0)
-           (decf n)
-           (crt:move-direction win :left)
-           (crt:delete-char win)))
-
-        ;; send a quit message to the irc server, cleanly disconnect
-        ;; TODO: remove this later
-        (#\R (quit st))
-
-        ;; quit the client, go back to the lisp repl
-        ;; TODO: remove this later
-        (#\Q (return-from crt:event-case))
-
-        ;; we cant make this input-blocking nil instead of event (nil), because
-        ;; we have to check for input during the nil event.
-        ;; a much better way way would be to use separate threads for ui events and
-        ;; network events.
-        ((nil)
-         ;; when input-blocking = nil, prevent high CPU load.
-         (sleep 0.01)
-         ;; return t if there is a char available on the stream
-         (when (listen st)
-           ;; TODO: server connection should hapen in a completely separate thread, not in the user input event loop.
-           ;; the thread should write server output to a shared buffer, and every time the buffer is updated,
-           ;; the output window should be redisplayed.
-           (let ((line (read-irc-line st)))
-             ;; TODO: should we quit main loop when the connection is at the EOF?
-             (when (and line (eq line :eof) (return-from crt:event-case)))
-             (when line
-               ;; save excursion prevents that the cursor jumps between windows.
-               ;; it should always stay in the input window.
-               (crt:save-excursion win
-                 ;;(princ line wout)
-                 ;;(princ (parse line) wout)
-                 ;; TODO: add a logger here.
-                 (handle-message line wout st))) ;; --> event.lisp
-             (crt:refresh wout))))
-
-        ;; non-function keys, i.e. normal character keys
-        (otherwise
-         (when (and (characterp event)
-                    ;; dont allow the input line to be longer than the screen width.
-                    (< (cadr (crt:cursor-position win)) (1- (crt:width win))))
-           (incf n)
-           ;; TODO: use add instead of add-wide-char.
-           (crt:add-wide-char win event))))
+        ;; C-a will exit the event loop.
+        (crt:edit field stream win wout))
 
       (close win)
       (close wout))))
+

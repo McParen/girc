@@ -2,5 +2,6 @@
   (:use :common-lisp :split-sequence)
   (:nicknames #:girc)
   (:export
+
    ;; girc.lisp
-   ui))
+   run))
