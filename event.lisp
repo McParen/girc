@@ -26,6 +26,7 @@
   (values (parse-integer cmd)))
 
 (defun command-to-keyword (cmd)
+  "Return a keyword symbol representing a valid non-numeric irc command."
   (values (intern (string-upcase cmd) "KEYWORD")))
 
 ;; TODO: we want users to be able to add their own event handlers using both numerics or :RPL_ keywords
@@ -46,22 +47,22 @@
 ;; so add-event-handler should not overwrite an entry, but add to it.
 ;; but then, how do we remove a handler from the list???
 ;; do we have to add sub-ID's to handlers, like epic does with numbers?
-(defmacro add-event-handler (event &body handler-function)
+;; TODO: define a define-command function to deal with user commands.
+;; irc messages received from a server are "events", user input is a "command".
+(defmacro define-handler (event handler-function)
   "Add an irc event and an associated handler function.
 
 An event is a keyword for an irc command, or an integer for the numeric.
 
 The handler function takes four arguments:
 
-- a croatoan/ncurses window for any possible output
-- an event (keyword or integer)
+- a window for output
 - a parsed message object
-- the connected server stream."
+- the connected server stream"
   `(setf *event-handlers*
-         ;; we need to make handler-function a &body so it is indented properly by slime.
-         (acons ,event ,@handler-function *event-handlers*)))
+         (acons ,event ,handler-function *event-handlers*)))
 
-(defun get-event-handler (event)
+(defun get-handler (event)
   "Take an irc event (keyword or integer), return the associated handler function."
   (let ((event-pair (assoc event *event-handlers*)))
     (if event-pair
@@ -75,39 +76,37 @@ The handler function takes four arguments:
     ;; if not, we dont have to check
     ;; an irc message without an event/command cant exist
     (when event
-      (let ((handler (get-event-handler event)))
+      (let ((handler (get-handler event)))
         (if handler
-            (funcall handler wout event message stream)
-
+            (funcall handler wout message stream)
             ;; default action (simply print event) when no event handler has been defined.
             ;; that means that all validated events will be handled.
-            (funcall (get-event-handler :default-event-handler) wout event message stream))))))
+            (funcall (get-handler t) wout message stream))))))
 
 ;; here we first define several event handler functions.
 
-(defun default-event-handler (wout event message stream)
+(defun default-event-handler (wout message stream)
   "The default event handler will handle every valid irc event for which no handler has been specified.
 
 For now, the irc message will simply be displayed in the output window."
-  (declare (ignore event stream))
+  (declare (ignore stream))
   (format wout "~A~%" (ircmsg message)))
 
-(defun ping-handler (wout event message stream)
-  (declare (ignore event))
+(defun ping-handler (wout message stream)
+  ;;(declare (ignore))
   (format wout "~A~%" (ircmsg message))
   (format wout "PONG :~A~%" (text message))
   (send stream "PONG :~A" (text message)))
 
-(defun privmsg-handler (wout event message stream)
-  (declare (ignore event stream))
+(defun privmsg-handler (wout message stream)
+  (declare (ignore stream))
   (format wout "~A ~A: ~A~%"
                (car (get-nick-user-host (prefix message))) ; this should be (nick (prefix message))
-               (nth 0 (params message))                    ; this should be (p1 message)
+               (nth 0 (params message))                    ; this should be (p0 message)
                (text message)))
 
 ;; then we add the handlers to events.
 
-;; TODO: rename the default event handler to t?
-(add-event-handler :default-event-handler 'default-event-handler)
-(add-event-handler :ping 'ping-handler)
-(add-event-handler :privmsg 'privmsg-handler)
+(define-handler t 'default-event-handler)
+(define-handler :ping 'ping-handler)
+(define-handler :privmsg 'privmsg-handler)
