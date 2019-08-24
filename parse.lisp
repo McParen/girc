@@ -82,7 +82,9 @@
 (defun get-nick-user-host (prefix)
   (if (string-any "!@" prefix)
       (string-tokenize "!@" prefix)
-      (list prefix "" "")))
+      ;; if the prefix isnt in the form nick!user@host it is just a server hostname
+      ;; :efnet.portlane.se 366 haom #EFNetNews :End of /NAMES list.
+      (list "" "" prefix)))
 
 ;; (get-params-and-text '("prefix" "command" "p1 p2 p3 :text1 text2")) => (("p1" "p2" "p3") "text1 text2")
 ;; (get-params-and-text '(NIL "command" "p1 p2 p3 :text1 text2")) => (("p1" "p2" "p3") "text1 text2")
@@ -113,3 +115,12 @@
   (let* ((lst1 (get-prefix-and-command ircmsg))
          (lst2 (get-params-and-text lst1)))
     (make-instance 'message :ircmsg ircmsg :prefix (car lst1) :command (cadr lst1) :params (car lst2) :text (cadr lst2))))
+
+(defun prefix-nick (message)
+  (nth 0 (get-nick-user-host (prefix message))))
+
+(defun prefix-user (message)
+  (nth 1 (get-nick-user-host (prefix message))))
+
+(defun prefix-host (message)
+  (nth 2 (get-nick-user-host (prefix message))))

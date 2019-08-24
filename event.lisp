@@ -35,6 +35,7 @@
   "Take a command or numeric string, return a keyword or integer representing the IRC event."
   (cond ((numericp cmd) (numeric-to-integer cmd))
         ((commandp cmd) (command-to-keyword cmd))
+        ;; TODO: is it better to signal an error or to retun nil if the command isnt valid?
         (t (error "identify-event: event ~A not a valid irc numeric or command." cmd))))
 
 ;; TODO: this is a global variable at first, should be a server/connection slot later.
@@ -42,13 +43,6 @@
 (defparameter *event-handlers* nil
   "Alist of events (keyword or integer) and handler functions.")
 
-;; TODO: we want more than one event handler per event.
-;; the handler should be like an emacs hook, a list of handler functions.
-;; so add-event-handler should not overwrite an entry, but add to it.
-;; but then, how do we remove a handler from the list???
-;; do we have to add sub-ID's to handlers, like epic does with numbers?
-;; TODO: define a define-command function to deal with user commands.
-;; irc messages received from a server are "events", user input is a "command".
 (defmacro define-handler (event handler-function)
   "Add an irc event and an associated handler function.
 
@@ -56,9 +50,7 @@ An event is a keyword for an irc command, or an integer for the numeric.
 
 The handler function takes four arguments:
 
-- a window for output
-- a parsed message object
-- the connected server stream"
+a window for output, a parsed message object and the connected server stream."
   `(setf *event-handlers*
          (acons ,event ,handler-function *event-handlers*)))
 
@@ -73,8 +65,7 @@ The handler function takes four arguments:
   (let* ((message (parse ircmsg))
          (event (validate (command message)))) ; return key or integer
     ;; TODO: does validate ever return nil?
-    ;; if not, we dont have to check
-    ;; an irc message without an event/command cant exist
+    ;; if not, we dont have to check, an irc message without an event/command cant exist
     (when event
       (let ((handler (get-handler event)))
         (if handler
@@ -98,12 +89,20 @@ For now, the irc message will simply be displayed in the output window."
   (format wout "PONG :~A~%" (text message))
   (send stream "PONG :~A" (text message)))
 
+;; Syntax: :<prefix> PRIVMSG <target> :<text>
+;; Examples:
+;; :IdleOne!~idleone@ubuntu/member/idleone PRIVMSG #ubuntu :The_BROS: not at this time.
+;; :leo!~leo@host-205-241-38-153.acelerate.net PRIVMSG #ubuntu :im a newbie
+;; :moah!~gnu@dslb-092-073-066-073.pools.arcor-ip.net PRIVMSG arrk13 :test back
+;; :haom!~myuser@93-142-151-146.adsl.net.t-com.hr PRIVMSG haom :hello there
+
 (defun privmsg-handler (wout message stream)
   (declare (ignore stream))
-  (format wout "~A ~A: ~A~%"
-               (car (get-nick-user-host (prefix message))) ; this should be (nick (prefix message))
-               (nth 0 (params message))                    ; this should be (p0 message)
-               (text message)))
+  (format wout
+          "~A ~A: ~A~%"
+          (prefix-nick message)
+          (nth 0 (params message))
+          (text message)))
 
 ;; then we add the handlers to events.
 
