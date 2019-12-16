@@ -1,7 +1,7 @@
 (in-package :de.anvi.girc)
 
 ;; TODO: this should be done during the initialization of the connection object
-;; TODO: defclass 'connection
+;; TODO: defclass 'connection, then this should be called make-connection
 (defun connect (hostname port)
   "Take a hostname (string) or IP and a port (integer), connect to the irc server, return a server stream."
   (let* ((socket (usocket:socket-connect hostname port))
@@ -9,7 +9,9 @@
     ;; return the stream of the created client socket
     stream))
 
-;; TODO: check that the string is max 512 bytes long.
+;; TODO: check that the string is max 512 bytes long including CRLF.
+;; Example:
+;; (send stream "USER ~A ~A * :~A" username mode realname)
 (defun send (stream ircmsg &rest args)
   "Send an irc message string to the stream.
 
@@ -27,32 +29,37 @@ The allowed max length of the irc message including CRLF is 512 bytes."
          args)
   (force-output stream))
 
-(defun nick (stream nickname)
-  "Give the user a new nickname during registration or change the existing one."
-  (send stream "NICK ~A" nickname))
+(defun make-irc-message (command params text)
+  "Assemble a valid IRC protocol message without the CRLF line ending.
 
-(defun user (stream username mode realname)
-  "Specify the username, mode and realname of a new user when registering a connection."
-  ;; "USER ~A 0 0 :~A"
-  (send stream "USER ~A ~A * :~A" username mode realname))
+Params is a list of string parameters.
 
-(defun register (stream nickname mode username realname)
-  "Register a connection to an irc server with a nickname and a username.
+The proper CRLF line ending is added by send-irc-message."
+    (format nil "~A~{ ~A~}~@[ :~A~]" command params text))
 
-This is the first command that should be sent after a connection is established.
+#|
 
-Upon success, the server will reply with a 001 RPL_WELCOME message."
-  (nick stream nickname)
-  (user stream username mode realname))
+The command should not be nil or an empty string.
 
-;; QUIT :Gone to have lunch
-;; :syrk!kalt@millennium.stealth.net QUIT :Gone to have lunch
-;; ERROR :Closing Link: 5.146.114.134 (Client Quit)
-(defun quit (stream &optional (quit-message "Bye"))
-  "Cleanly QUIT an IRC connection and send a message to the joined channels.
+CL-USER> (make-irc-message 'a '("x" "y" "z") 'b)
+"A x y z :B"
+CL-USER> (make-irc-message 'a '() 'b)
+"A :B"
+CL-USER> (make-irc-message 'a '("x" "y" "z") nil)
+"A x y z"
 
-The server acknowledges this by sending an ERROR message to the client."
-  (send stream "QUIT :~A" quit-message))
+|#
+
+(defun send-irc-message (stream command params text)
+  "Assemble an irc message, then send it as a string to the stream.
+
+A proper CRLF \r\n ending is added to the message before it is sent.
+
+The allowed max length of the irc message including CRLF is 512 bytes."
+  (let ((ircmsg (make-irc-message command params text)))
+    ;; create a string out of \r and \n, CRLF.
+    (write-string (concatenate 'string ircmsg (coerce '(#\return #\linefeed) 'string)) stream)
+    (force-output stream)))
 
 ;; read-byte from stream
 ;; utf8-to-unicode byte list to character
@@ -61,6 +68,7 @@ The server acknowledges this by sending an ERROR message to the client."
 ;; graphic-char-p, dann geht aber dcc ^A nicht.
 ;; TODO: do not read lisp characters, read byte by byte (octet by octet), then interpret them as ANSI (latin1) or ASCII/UTF-8.
 ;; TODO: read chars byte by byte to a list first, then convert to a string.
+
 (defun read-irc-message (stream)
   (let ((inbuf (make-array 0 :element-type 'character :fill-pointer 0 :adjustable t)) ;; empty string ""
         (ch-prev nil))
@@ -94,6 +102,7 @@ The server acknowledges this by sending an ERROR message to the client."
                ;;(setf (fill-pointer inbuf) 0)
                )))))))
 
+;; this shouldnt be a function but a class
 (defun make-ui (scr)
   (let* ((wout (make-instance 'crt:window
                               :height (1- (crt:height scr))
@@ -119,38 +128,67 @@ The server acknowledges this by sending an ERROR message to the client."
   (destructuring-bind (stream win wout) args
     (sleep 0.01)
     (when (listen stream)
+      ;; TODO: this should happen in a worker thread
+      ;; for every connected server.
       (let ((ircmsg (read-irc-message stream)))
         (when ircmsg
           (crt:save-excursion win
+            ;; message handline writes to the screen, so it has to happen in the main thread
             (handle-irc-message ircmsg wout stream) ;; see event.lisp
             (crt:refresh wout)))))))
 
-;; use this instead of accept-field so we dont have to return from edit.
 (defun process-user-input (field event &rest args)
   "When the field is used without a parent form, accepting the field edit returns the field value."
-  (with-accessors ((inbuf crt::buffer) (inptr crt::input-pointer) (dptr crt::display-pointer) (win crt:window)) field
-    (when (> (length inbuf) 0)
-      (let ((val (crt:value field)))
-        (destructuring-bind (stream win wout) args
-          (crt:clear win)
-          (setf inbuf nil inptr 0 dptr 0)
-          (send stream val)
-          (crt:save-excursion win
-            (format wout "=> ~A~%" val)
-            (crt:refresh wout)))))))
+  (let ((val (crt:value field)))
+    ;; only process when the input field is not empty
+    (when val
+      (destructuring-bind (stream win wout) args
+        (apply #'crt:reset-field field event args)
+        (send stream val)
+        ;; the cursor should not leave the input field
+        (crt:save-excursion win
+          (format wout "=> ~A~%" val)
+          (crt:refresh wout))))))
 
+;; after quickloading girc, start the client with (girc:run).
 (defun run (&optional (nickname "haom") (hostname "chat.freenode.net") (port 6667))
   (crt:with-screen (scr :input-echoing nil :cursor-visible t :enable-colors nil)
     (destructuring-bind (win wout field) (make-ui scr)
+
+      ;; TODO 191110: do not automatically connect to a server when starting the client.
+      ;; make connect a user command
+      
       (let ((stream (connect hostname port)))
+
+        ;; TODO: move all UI variables to a single variable, like connection for the server
+        ;; TODO: move connect and register to a user command (or keybinding)
+        
         (register stream nickname 0 "myuser" "Realname")
 
+        ;; instead of processed during a nil event, this should be moved to a worker thread.
+        ;; as soon as we connect to a server, pass the stream to a background thread
+        ;; process-server-input then should just take read messages from the thread queue
         (crt:bind field nil 'process-server-input)
+
+        ;; the user input line is processed on every ENTER press.
         (crt:bind field #\newline 'process-user-input)
 
-        ;; C-a will exit the event loop.
-        (crt:edit field stream win wout))
+        ;; C-w = 23 = #\etb (End of Transmission Block)
+        ;; sends a quit message to the server. (replied by the server with an error message)
+        (crt:bind field #\etb (lambda (f e &rest a) (quit stream)))
 
+        ;; C-a will exit the event loop.
+        ;; TODO 191103: problem: c-a = #\soh = accept-field only works when the field is not empty!
+        ;; stream win and wout are passed to every routine as: &rest args
+
+        ;; in order to be able to process several server connections,
+        ;; instead of a single stream, we have to pass a list of streams here.
+        ;; win and wout should be global/special variables
+        ;; or slots in a global ui object
+        (crt:edit field
+                  stream win wout)) ;; these three are the "args" passed to run-event-loop.
+
+      ;; when we accept the field with c-a, edit returns then the client exits.
+      
       (close win)
       (close wout))))
-
