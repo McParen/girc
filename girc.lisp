@@ -10,9 +10,8 @@
     stream))
 
 ;; TODO: check that the string is max 512 bytes long including CRLF.
-;; Example:
-;; (send stream "USER ~A ~A * :~A" username mode realname)
-(defun send (stream ircmsg &rest args)
+;; Example: (send stream "USER ~A ~A * :~A" username mode realname)
+(defun send (connection ircmsg &rest args)
   "Send an irc message string to the stream.
 
 A proper CRLF \r\n ending is added to the message before it is sent.
@@ -21,13 +20,14 @@ If there are additional args, ircmsg has to be a template accepting
 the proper number of format-style control strings.
 
 The allowed max length of the irc message including CRLF is 512 bytes."
-  (apply #'format stream
-         ;; then append it to the template before passing it to format.
-         (concatenate 'string ircmsg
-                      ;; create a string out of \r and \n, crlf.
-                      (coerce '(#\return #\linefeed) 'string))
-         args)
-  (force-output stream))
+  (let ((stream (connection-stream connection)))
+    (apply #'format stream
+           ;; then append it to the template before passing it to format.
+           (concatenate 'string ircmsg
+                        ;; create a string out of \r and \n, crlf.
+                        (coerce '(#\return #\linefeed) 'string))
+           args)
+    (force-output stream)))
 
 (defun make-irc-message (command params text)
   "Assemble a valid IRC protocol message without the CRLF line ending.
@@ -50,13 +50,14 @@ CL-USER> (make-irc-message 'a '("x" "y" "z") nil)
 
 |#
 
-(defun send-irc-message (stream command params text)
+(defun send-irc-message (connection command params text)
   "Assemble an irc message, then send it as a string to the stream.
 
 A proper CRLF \r\n ending is added to the message before it is sent.
 
 The allowed max length of the irc message including CRLF is 512 bytes."
-  (let ((ircmsg (make-irc-message command params text)))
+  (let ((ircmsg (make-irc-message command params text))
+        (stream (connection-stream connection)))
     ;; create a string out of \r and \n, CRLF.
     (write-string (concatenate 'string ircmsg (coerce '(#\return #\linefeed) 'string)) stream)
     (force-output stream)))
@@ -102,93 +103,78 @@ The allowed max length of the irc message including CRLF is 512 bytes."
                ;;(setf (fill-pointer inbuf) 0)
                )))))))
 
-;; this shouldnt be a function but a class
-(defun make-ui (scr)
-  (let* ((wout (make-instance 'crt:window
-                              :height (1- (crt:height scr))
-                              :width (crt:width scr)
-                              :location '(0 0)
-                              :enable-scrolling t))
-         (win  (make-instance 'crt:window
-                              :height 1
-                              :width (crt:width scr)
-                              :location (list (1- (crt:height scr)) 0)
-                              :enable-function-keys t
-                              ;; note that when this is nil, we plan to perform work during the nil event.
-                              :input-blocking nil))
-         (field (make-instance 'crt:field :location (list 0 0) :width (crt:width scr) :window win
-                               :style (list :foreground nil :background nil))))
-    (setf *print-right-margin* (crt:width scr))
-    (list win wout field)))
-
 ;; Handler of the nil event during a non-blocking edit of the field.
 ;; TODO: check whether win is non-blocking before assuming it
 ;; this should run in a separate thread
 (defun process-server-input (field event &rest args)
-  (destructuring-bind (stream win wout) args
-    (sleep 0.01)
-    (when (listen stream)
-      ;; TODO: this should happen in a worker thread
-      ;; for every connected server.
-      (let ((ircmsg (read-irc-message stream)))
-        (when ircmsg
-          (crt:save-excursion win
-            ;; message handline writes to the screen, so it has to happen in the main thread
-            (handle-irc-message ircmsg wout stream) ;; see event.lisp
-            (crt:refresh wout)))))))
+  (destructuring-bind (ui con) args
+    (with-accessors ((win input-window) (wout output-window)) ui
+      (with-accessors ((stream connection-stream)) con
+        (sleep 0.01)
+        (when (listen stream)
+          ;; TODO: this should happen in a worker thread
+          ;; for every connected server.
+          (let ((ircmsg (read-irc-message stream)))
+            (when ircmsg
+              (crt:save-excursion win
+                ;; message handline writes to the screen, so it has to happen in the main thread
+                (handle-irc-message ircmsg ui con) ;; see event.lisp
+                (crt:refresh wout)))))))))
+
+;; TODO: split this into:
+;;   parse-user-input
+;;   handle-user-input
+
+;; TODO 191103: processing user input should work when the client is not connected
+;; therefore we have to remove (send stream val) from here.
+;; messages should only be sent when a command like say, msg or notice is used.
+;; that means send should not be here, but in the handlers of user commands.
 
 (defun process-user-input (field event &rest args)
   "When the field is used without a parent form, accepting the field edit returns the field value."
   (let ((val (crt:value field)))
     ;; only process when the input field is not empty
     (when val
-      (destructuring-bind (stream win wout) args
-        (apply #'crt:reset-field field event args)
-        (send stream val)
-        ;; the cursor should not leave the input field
-        (crt:save-excursion win
-          (format wout "=> ~A~%" val)
-          (crt:refresh wout))))))
+      (destructuring-bind (ui con) args
+        (with-accessors ((win input-window) (wout output-window)) ui
+          (with-accessors ((stream connection-stream)) con
+            (apply #'crt:reset-field field event args)
+            (send con val)
+            ;; the cursor should not leave the input field
+            (crt:save-excursion win
+              (format wout "=> ~A~%" val)
+              (crt:refresh wout))))))))
 
 ;; after quickloading girc, start the client with (girc:run).
-(defun run (&optional (nickname "haom") (hostname "chat.freenode.net") (port 6667))
-  (crt:with-screen (scr :input-echoing nil :cursor-visible t :enable-colors nil)
-    (destructuring-bind (win wout field) (make-ui scr)
-
-      ;; TODO 191110: do not automatically connect to a server when starting the client.
-      ;; make connect a user command
-      
-      (let ((stream (connect hostname port)))
-
-        ;; TODO: move all UI variables to a single variable, like connection for the server
-        ;; TODO: move connect and register to a user command (or keybinding)
+(defun run (&optional (nickname "haom") (hostname "chat.freenode.net"))
+  (let ((ui (make-instance 'interface))
+        (con (make-instance 'connection :nickname nickname :hostname hostname)))
         
-        (register stream nickname 0 "myuser" "Realname")
+    ;; instead of processed during a nil event, this should be moved to a worker thread.
+    ;; as soon as we connect to a server, pass the stream to a background thread
+    ;; process-server-input then should just take read messages from the thread queue
+    (crt:bind (input-field ui) nil 'process-server-input)
 
-        ;; instead of processed during a nil event, this should be moved to a worker thread.
-        ;; as soon as we connect to a server, pass the stream to a background thread
-        ;; process-server-input then should just take read messages from the thread queue
-        (crt:bind field nil 'process-server-input)
+    ;; TODO 191216: do not bind within the run definition.
+    ;; bind them on the top level and use a keymap.
+    ;; then associate the keymap with the input field.
+        
+    ;; the user input line is processed on every ENTER press.
+    (crt:bind (input-field ui) #\newline 'process-user-input)
 
-        ;; the user input line is processed on every ENTER press.
-        (crt:bind field #\newline 'process-user-input)
+    ;; C-w = 23 = #\etb (End of Transmission Block)
+    ;; sends a quit message to the server. (replied by the server with an error message)
+    (crt:bind (input-field ui) #\etb (lambda (f e &rest a) (quit con)))
 
-        ;; C-w = 23 = #\etb (End of Transmission Block)
-        ;; sends a quit message to the server. (replied by the server with an error message)
-        (crt:bind field #\etb (lambda (f e &rest a) (quit stream)))
+    ;; C-a will exit the event loop.
+    ;; TODO 191103: problem: c-a = #\soh = accept-field only works when the field is not empty!
+    ;; stream win and wout are passed to every routine as: &rest args
 
-        ;; C-a will exit the event loop.
-        ;; TODO 191103: problem: c-a = #\soh = accept-field only works when the field is not empty!
-        ;; stream win and wout are passed to every routine as: &rest args
+    ;; in order to be able to process several server connections,
+    ;; instead of a single stream, we have to pass a list of streams here.
+    (crt:edit (input-field ui)
+              ;; these two are the "args" passed to run-event-loop.
+              ui con)
+    ;; when we accept the field with c-a, edit returns then the client exits.
 
-        ;; in order to be able to process several server connections,
-        ;; instead of a single stream, we have to pass a list of streams here.
-        ;; win and wout should be global/special variables
-        ;; or slots in a global ui object
-        (crt:edit field
-                  stream win wout)) ;; these three are the "args" passed to run-event-loop.
-
-      ;; when we accept the field with c-a, edit returns then the client exits.
-      
-      (close win)
-      (close wout))))
+    (finalize-interface ui)))

@@ -3,6 +3,127 @@
 ;; irc-message, ircmsg = irc protocol message string
 ;; message, msg = parsed girc message object
 
+(defclass interface ()
+  ((main-screen
+    :initarg       :screen
+    :initform      nil
+    :accessor      main-screen
+    :type          (or null crt:screen)
+    :documentation "croatoan/ncurses main screen.")
+
+   (output-window
+    :initarg       :output-window
+    :initform      nil
+    :accessor      output-window
+    :type          (or null crt:window)
+    :documentation "croatoan/ncurses window for the display of server and command output.")
+
+   (input-window
+    :initarg       :input-window
+    :initform      nil
+    :accessor      input-window
+    :type          (or null crt:window)
+    :documentation "croatoan/ncurses window for the user command input.")
+
+   (input-field
+    :initarg       :input-field
+    :initform      nil
+    :accessor      input-field
+    :type          (or null crt:field)
+    :documentation "croatoan/ncurses field for the user command input."))
+
+  (:documentation "Elements of the user input and output interface based on croatoan/ncurses."))
+
+(defmethod initialize-instance :after ((ui interface) &key)
+  "Initialize the window and field objects that are part of the user interface."
+  (with-slots (main-screen input-window output-window input-field) ui
+    (setf main-screen   (make-instance 'crt:screen
+                                       :input-echoing nil
+                                       :input-buffering nil
+                                       :process-control-chars t
+                                       :cursor-visible t
+                                       :enable-colors nil
+                                       :enable-function-keys t)
+          output-window (make-instance 'crt:window
+                                       :height (1- (crt:height main-screen))
+                                       :width (crt:width main-screen)
+                                       :location '(0 0)
+                                       :enable-scrolling t)
+          input-window  (make-instance 'crt:window
+                                       :height 1
+                                       :width (crt:width main-screen)
+                                       :location (list (1- (crt:height main-screen)) 0)
+                                       :enable-function-keys t
+                                       ;; note that when this is nil, we plan to perform work during the nil event.
+                                       :input-blocking nil)
+          input-field   (make-instance 'crt:field :location (list 0 0) :width (crt:width main-screen) :window input-window
+                                       :style (list :foreground nil :background nil)))))
+
+(defun finalize-interface (ui)
+  "Cleanly free ncurses object memory."
+  (with-slots (input-window output-window) ui
+    (close input-window)
+    (close output-window)
+    (crt::end-screen)))
+
+(defclass connection ()
+  ((name
+    :initarg       :name
+    :initform      nil
+    :accessor      connection-name
+    :type          (or null string)
+    :documentation "Name of the server to which the connection is established.")
+
+   (hostname
+    :initarg       :hostname
+    :initform      nil
+    :accessor      connection-server
+    :type          (or null string)
+    :documentation "Hostname of the IRC server to which the connection is established.")
+
+   (port
+    :initarg       :port
+    :initform      6667
+    :accessor      connection-port
+    :type          integer
+    :documentation "Port to which the server connection is established.")
+
+   (stream
+    :initarg       :stream
+    :initform      nil
+    :accessor      connection-stream
+    :type          (or null string)
+    :documentation "Hostname of the IRC server to which the connection is established.")
+
+   (nickname
+    :initarg       :nickname
+    :initform      nil
+    :accessor      connection-nickname
+    :type          (or null string)
+    :documentation "Nickname of the user to be registered with the connected server.")
+
+   (username
+    :initarg       :username
+    :initform      "myuser"
+    :accessor      connection-username
+    :type          (or null string)
+    :documentation "Username of the user to be registered with the connected server.")
+
+   (realname
+    :initarg       :realname
+    :initform      "Realname"
+    :accessor      connection-realname
+    :type          (or null string)
+    :documentation "Realname of the user to be registered with the connected server."))
+
+  (:documentation "Parameters necessary to establish a connection to an IRC server."))
+
+(defmethod initialize-instance :after ((con connection) &key)
+  "Initialize the window and field objects that are part of the user interface."
+  (with-slots (stream hostname port nickname username realname) con
+    (setf stream (connect hostname port))
+    (register con nickname 0 username realname)))
+
 (defclass message ()
   ((ircmsg
     :initarg       :ircmsg
@@ -49,3 +170,4 @@
   ;; unreadable objects are printed as <# xyz >
   (print-unreadable-object (obj out :type t)
     (format out "~S / ~S / ~S / ~S" (prefix obj) (command obj) (params obj) (text obj))))
+

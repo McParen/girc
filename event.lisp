@@ -50,7 +50,7 @@ An event is a keyword for an irc command, or an integer for the numeric.
 
 The handler function takes four arguments:
 
-a window for output, a parsed message object and the connected server stream."
+a parsed message object, the ui object and the connection object."
   `(setf *event-handlers*
          (acons ,event ,handler-function *event-handlers*)))
 
@@ -61,7 +61,7 @@ a window for output, a parsed message object and the connected server stream."
         (cdr event-pair)
         nil)))
 
-(defun handle-irc-message (ircmsg wout stream)
+(defun handle-irc-message (ircmsg ui con)
   (let* ((message (parse ircmsg))
          (event (validate (command message)))) ; return key or integer
     ;; TODO: does validate ever return nil?
@@ -69,25 +69,24 @@ a window for output, a parsed message object and the connected server stream."
     (when event
       (let ((handler (get-handler event)))
         (if handler
-            (funcall handler wout message stream)
+            (funcall handler message ui con)
             ;; default action (simply print event) when no event handler has been defined.
             ;; that means that all validated events will be handled.
-            (funcall (get-handler t) wout message stream))))))
+            (funcall (get-handler t) message ui con))))))
 
 ;; here we first define several event handler functions.
 
-(defun default-event-handler (wout message stream)
+(defun default-event-handler (msg ui con)
   "The default event handler will handle every valid irc event for which no handler has been specified.
 
-For now, the irc message will simply be displayed in the output window."
-  (declare (ignore stream))
-  (format wout "~A~%" (ircmsg message)))
+For now, the raw irc message will simply be displayed in the output window."
+  (declare (ignore con))
+  (format (output-window ui) "~A~%" (ircmsg msg)))
 
-(defun ping-handler (wout message stream)
-  ;;(declare (ignore))
-  (format wout "~A~%" (ircmsg message))
-  (format wout "PONG :~A~%" (text message))
-  (send stream "PONG :~A" (text message)))
+(defun ping-handler (msg ui con)
+  (format (output-window ui) "~A~%" (ircmsg msg))
+  (format (output-window ui) "PONG :~A~%" (text msg))
+  (send con "PONG :~A" (text msg)))
 
 ;; Syntax: :<prefix> PRIVMSG <target> :<text>
 ;; Examples:
@@ -96,13 +95,13 @@ For now, the irc message will simply be displayed in the output window."
 ;; :moah!~gnu@dslb-092-073-066-073.pools.arcor-ip.net PRIVMSG arrk13 :test back
 ;; :haom!~myuser@93-142-151-146.adsl.net.t-com.hr PRIVMSG haom :hello there
 
-(defun privmsg-handler (wout message stream)
-  (declare (ignore stream))
-  (format wout
+(defun privmsg-handler (msg ui con)
+  (declare (ignore con))
+  (format (output-window ui)
           "~A ~A: ~A~%"
-          (prefix-nick message)
-          (nth 0 (params message))
-          (text message)))
+          (prefix-nick msg)
+          (nth 0 (params msg))
+          (text msg)))
 
 ;; then we add the handlers to events.
 
