@@ -1,17 +1,23 @@
 (in-package :de.anvi.girc)
 
+(defparameter *user-commands* nil)
+
+(defparameter *current-connection* nil)
+
+(defparameter *ui* nil)
+
 ;; TODO: this should be done during the initialization of the connection object
 ;; TODO: defclass 'connection, then this should be called make-connection
 (defun connect (hostname port)
-  "Take a hostname (string) or IP and a port (integer), connect to the irc server, return a server stream."
+  "Connect to the IRC server given by a hostname (string) or IP and a port (integer), return a server stream."
   (let* ((socket (usocket:socket-connect hostname port))
          (stream (usocket:socket-stream socket)))
     ;; return the stream of the created client socket
     stream))
 
 ;; TODO: check that the string is max 512 bytes long including CRLF.
-;; Example: (send stream "USER ~A ~A * :~A" username mode realname)
-(defun send (connection ircmsg &rest args)
+;; Example: (send-raw-message stream "USER ~A ~A * :~A" username mode realname)
+(defun send-raw-message (connection ircmsg-template &rest args)
   "Send an irc message string to the stream.
 
 A proper CRLF \r\n ending is added to the message before it is sent.
@@ -23,11 +29,15 @@ The allowed max length of the irc message including CRLF is 512 bytes."
   (let ((stream (connection-stream connection)))
     (apply #'format stream
            ;; then append it to the template before passing it to format.
-           (concatenate 'string ircmsg
+           (concatenate 'string ircmsg-template
                         ;; create a string out of \r and \n, crlf.
                         (coerce '(#\return #\linefeed) 'string))
            args)
     (force-output stream)))
+
+(defun send-raw (raw-msg-template &rest args)
+  "Send a raw IRC message to the current connection."
+  (apply #'send-raw-message *current-connection* raw-msg-template args))
 
 (defun make-irc-message (command params text)
   "Assemble a valid IRC protocol message without the CRLF line ending.
@@ -61,6 +71,10 @@ The allowed max length of the irc message including CRLF is 512 bytes."
     ;; create a string out of \r and \n, CRLF.
     (write-string (concatenate 'string ircmsg (coerce '(#\return #\linefeed) 'string)) stream)
     (force-output stream)))
+
+(defun send (command params text)
+  "Make and then send an IRC message to the current connection."
+  (send-irc-message *current-connection* command params text))
 
 ;; read-byte from stream
 ;; utf8-to-unicode byte list to character
@@ -106,75 +120,101 @@ The allowed max length of the irc message including CRLF is 512 bytes."
 ;; Handler of the nil event during a non-blocking edit of the field.
 ;; TODO: check whether win is non-blocking before assuming it
 ;; this should run in a separate thread
-(defun process-server-input (field event &rest args)
-  (destructuring-bind (ui con) args
-    (with-accessors ((win input-window) (wout output-window)) ui
-      (with-accessors ((stream connection-stream)) con
-        (sleep 0.01)
-        (when (listen stream)
-          ;; TODO: this should happen in a worker thread
-          ;; for every connected server.
-          (let ((ircmsg (read-irc-message stream)))
-            (when ircmsg
-              (crt:save-excursion win
-                ;; message handline writes to the screen, so it has to happen in the main thread
-                (handle-irc-message ircmsg ui con) ;; see event.lisp
-                (crt:refresh wout)))))))))
+(defun process-server-input (field event)
+  (sleep 0.01)
+  ;; do not process if a connection has not been established first.
+  (when *current-connection*
+    (let ((stream (connection-stream *current-connection*)))
+      (when (listen stream)
+        ;; TODO: this should happen in a worker thread for every connected server.
+        (let ((raw-message (read-irc-message stream)))
+          (when raw-message
+            ;; after anything is written to the output window, return the cursor to the input window.
+            (crt:save-excursion (input-window *ui*)
+              ;; message handline writes to the screen, so it has to happen in the main thread
+              (handle-irc-message raw-message *current-connection*)))))))) ;; see event.lisp
 
-;; TODO: split this into:
-;;   parse-user-input
-;;   handle-user-input
+(defun handle-user-command (field event &rest args1)
+  (let ((input-string (crt:value field)))
+    (when input-string
+      (apply #'crt:reset-field field event args1)
+      (destructuring-bind (cmd . args) (parse-user-input input-string)
+        ;; TODO: what to do when there is no command in the input?
+        (when cmd
+          (let ((fun (get-command cmd)))
+            (if fun
+                (funcall fun cmd args)
+                (funcall (get-command t) cmd args))))))))
 
-;; TODO 191103: processing user input should work when the client is not connected
-;; therefore we have to remove (send stream val) from here.
-;; messages should only be sent when a command like say, msg or notice is used.
-;; that means send should not be here, but in the handlers of user commands.
+(defun display (template &rest args)
+  "Display the format template on the output window."
+  (let ((wout (output-window *ui*)))
+    (apply #'format wout template args)
+    (crt:refresh wout)))
 
-(defun process-user-input (field event &rest args)
-  "When the field is used without a parent form, accepting the field edit returns the field value."
-  (let ((val (crt:value field)))
-    ;; only process when the input field is not empty
-    (when val
-      (destructuring-bind (ui con) args
-        (with-accessors ((win input-window) (wout output-window)) ui
-          (with-accessors ((stream connection-stream)) con
-            (apply #'crt:reset-field field event args)
-            (send con val)
-            ;; the cursor should not leave the input field
-            (crt:save-excursion win
-              (format wout "=> ~A~%" val)
-              (crt:refresh wout))))))))
+
+
+;; every connection should run in a background thread and write to a buffer
+;; then when a connection is made current, its buffer is displayed on the ui
+;; an the user input is directed to it.
+
+
+
+
+;; passed to the field during initialization
+(crt:define-keymap 'girc-input-map
+  (list
+
+   ;; C-a = ^A = #\soh = 1 = start of heading
+   #\soh      'crt::accept
+
+   ;; C-x = cancel = CAN = #\can
+   #\can      'crt::cancel
+
+   ;; C-r = reset = DC2 = #\dc2
+   #\dc2      'crt::reset-field
+
+   :left      'crt::move-previous-char
+   :right     'crt::move-next-char
+
+   :backspace 'crt::delete-previous-char
+   :dc        'crt::delete-next-char
+   
+   :ic        (lambda (field event &rest args)
+                (setf (crt:insert-mode-p (crt:window field))
+                      (not (crt:insert-mode-p (crt:window field)))))
+
+   t          'crt::field-add-char
+
+   nil        'process-server-input
+   #\newline  'handle-user-command
+   
+   ;; C-w = 23 = #\etb = End of Transmission Block
+   #\etb      (lambda (field event &rest args)
+                (quit *current-connection*))))
 
 ;; after quickloading girc, start the client with (girc:run).
-(defun run (&optional (nickname "haom") (hostname "chat.freenode.net"))
-  (let ((ui (make-instance 'interface))
-        (con (make-instance 'connection :nickname nickname :hostname hostname)))
+(defun run ()
+  (setq *ui* (make-instance 'interface))
+#|
+  ;; instead of processed during a nil event, this should be moved to a worker thread.
+  ;; as soon as we connect to a server, pass the stream to a background thread
+  ;; process-server-input then should just take read messages from the thread queue
+  (crt:bind (input-field ui) nil 'process-server-input)
+
+  ;; TODO 191216: do not bind within the run definition.
+  ;; bind them on the top level and use a keymap.
+  ;; then associate the keymap with the input field.
         
-    ;; instead of processed during a nil event, this should be moved to a worker thread.
-    ;; as soon as we connect to a server, pass the stream to a background thread
-    ;; process-server-input then should just take read messages from the thread queue
-    (crt:bind (input-field ui) nil 'process-server-input)
+  ;; the user input line is processed on every ENTER press.
+  (crt:bind (input-field ui) #\newline 'handle-user-command)
 
-    ;; TODO 191216: do not bind within the run definition.
-    ;; bind them on the top level and use a keymap.
-    ;; then associate the keymap with the input field.
-        
-    ;; the user input line is processed on every ENTER press.
-    (crt:bind (input-field ui) #\newline 'process-user-input)
+  ;; C-w = 23 = #\etb (End of Transmission Block)
+  ;; sends a quit message to the server. (replied by the server with an error message)
+  (crt:bind (input-field ui) #\etb (lambda (f e &rest a) (quit *current-connection*)))
 
-    ;; C-w = 23 = #\etb (End of Transmission Block)
-    ;; sends a quit message to the server. (replied by the server with an error message)
-    (crt:bind (input-field ui) #\etb (lambda (f e &rest a) (quit con)))
-
-    ;; C-a will exit the event loop.
-    ;; TODO 191103: problem: c-a = #\soh = accept-field only works when the field is not empty!
-    ;; stream win and wout are passed to every routine as: &rest args
-
-    ;; in order to be able to process several server connections,
-    ;; instead of a single stream, we have to pass a list of streams here.
-    (crt:edit (input-field ui)
-              ;; these two are the "args" passed to run-event-loop.
-              ui con)
-    ;; when we accept the field with c-a, edit returns then the client exits.
-
-    (finalize-interface ui)))
+  ;; C-a = #\soh = accept will exit the event loop.
+|#
+  (crt:edit (input-field *ui*))
+  
+  (finalize-interface *ui*))

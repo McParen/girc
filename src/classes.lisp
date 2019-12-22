@@ -57,7 +57,7 @@
                                        ;; note that when this is nil, we plan to perform work during the nil event.
                                        :input-blocking nil)
           input-field   (make-instance 'crt:field :location (list 0 0) :width (crt:width main-screen) :window input-window
-                                       :style (list :foreground nil :background nil)))))
+                                       :style (list :foreground nil :background nil) :keymap 'girc-input-map))))
 
 (defun finalize-interface (ui)
   "Cleanly free ncurses object memory."
@@ -125,7 +125,14 @@
     (register con nickname 0 username realname)))
 
 (defclass message ()
-  ((ircmsg
+  ((connection
+    :initarg       :connection
+    :initform      nil
+    :accessor      connection
+    :type          (or null connection)
+    :documentation "Connection from which the message was received.")
+
+   (ircmsg
     :initarg       :ircmsg
     :initform      nil
     :accessor      ircmsg

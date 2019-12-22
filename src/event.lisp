@@ -43,7 +43,7 @@
 (defparameter *event-handlers* nil
   "Alist of events (keyword or integer) and handler functions.")
 
-(defmacro define-handler (event handler-function)
+(defmacro define-event-handler (event handler-function)
   "Add an irc event and an associated handler function.
 
 An event is a keyword for an irc command, or an integer for the numeric.
@@ -54,57 +54,56 @@ a parsed message object, the ui object and the connection object."
   `(setf *event-handlers*
          (acons ,event ,handler-function *event-handlers*)))
 
-(defun get-handler (event)
+(defun get-event-handler (event)
   "Take an irc event (keyword or integer), return the associated handler function."
   (let ((event-pair (assoc event *event-handlers*)))
     (if event-pair
         (cdr event-pair)
         nil)))
 
-(defun handle-irc-message (ircmsg ui con)
-  (let* ((message (parse ircmsg))
+(defun handle-irc-message (ircmsg connection)
+  (let* ((message (parse-raw-message ircmsg connection))
          (event (validate (command message)))) ; return key or integer
     ;; TODO: does validate ever return nil?
     ;; if not, we dont have to check, an irc message without an event/command cant exist
     (when event
-      (let ((handler (get-handler event)))
+      (let ((handler (get-event-handler event)))
         (if handler
-            (funcall handler message ui con)
+            (funcall handler message)
             ;; default action (simply print event) when no event handler has been defined.
             ;; that means that all validated events will be handled.
-            (funcall (get-handler t) message ui con))))))
+            (funcall (get-event-handler t) message))))))
 
-;; here we first define several event handler functions.
+;; here we define the event handler functions.
+;; those do not deal with the current connection, but the connection pointer given in the message.
 
-(defun default-event-handler (msg ui con)
+(defun default-event-handler (msg)
   "The default event handler will handle every valid irc event for which no handler has been specified.
 
 For now, the raw irc message will simply be displayed in the output window."
-  (declare (ignore con))
-  (format (output-window ui) "~A~%" (ircmsg msg)))
+  (display "~A~%" (ircmsg msg)))
 
-(defun ping-handler (msg ui con)
-  (format (output-window ui) "~A~%" (ircmsg msg))
-  (format (output-window ui) "PONG :~A~%" (text msg))
-  (send con "PONG :~A" (text msg)))
+(defun ping-handler (msg)
+  (display "~A~%" (ircmsg msg))
+  (display "PONG :~A~%" (text msg))
+  ;; return a PONG to the server which sent the PING.
+  (pong (connection msg) (text msg)))
 
-;; Syntax: :<prefix> PRIVMSG <target> :<text>
+;; Syntax:
+;; :<prefix> PRIVMSG <target> :<text>
 ;; Examples:
 ;; :IdleOne!~idleone@ubuntu/member/idleone PRIVMSG #ubuntu :The_BROS: not at this time.
 ;; :leo!~leo@host-205-241-38-153.acelerate.net PRIVMSG #ubuntu :im a newbie
 ;; :moah!~gnu@dslb-092-073-066-073.pools.arcor-ip.net PRIVMSG arrk13 :test back
 ;; :haom!~myuser@93-142-151-146.adsl.net.t-com.hr PRIVMSG haom :hello there
-
-(defun privmsg-handler (msg ui con)
-  (declare (ignore con))
-  (format (output-window ui)
-          "~A ~A: ~A~%"
-          (prefix-nick msg)
-          (nth 0 (params msg))
-          (text msg)))
+(defun privmsg-handler (msg)
+  (display "~A @ ~A: ~A~%" (prefix-nick msg) (nth 0 (params msg)) (text msg)))
 
 ;; then we add the handlers to events.
 
-(define-handler t 'default-event-handler)
-(define-handler :ping 'ping-handler)
-(define-handler :privmsg 'privmsg-handler)
+;; TODO 191220 rename to define-event-handler, so we can rhyme with define-command-handler
+;; add a way to add more handlers to an event, like cl-irc does with hooks.
+
+(define-event-handler t 'default-event-handler)
+(define-event-handler :ping 'ping-handler)
+(define-event-handler :privmsg 'privmsg-handler)

@@ -1,33 +1,46 @@
 (in-package :de.anvi.girc)
 
-;; used in register
-(defun nick (connection nickname)
-  "Give the user a new nickname during registration or change the existing one."
-  (send-irc-message connection :nick (list nickname) nil))
+;;; Implementation of default user commands.
 
-;; "USER ~A 0 0 :~A"
-(defun user (connection username mode realname)
-  "Specify the username, mode and realname of a new user when registering a connection."
-  (send-irc-message connection :user (list username mode "*") realname))
+(defmacro define-command (command function)
+  `(setf *user-commands*
+         (acons ,command ,function *user-commands*)))
 
-(defun register (connection nickname mode username realname)
-  "Register a connection to an irc server with a nickname and a username.
+(defun get-command (cmd)
+  (let ((cmd-pair (assoc cmd *user-commands* :test #'equal)))
+    (if cmd-pair
+        (cdr cmd-pair)
+        nil)))
 
-This is the first command that should be sent after a connection is established.
+(define-command "connect"
+    (lambda (cmd args)
+      (let ((nick (if args (string-car args) "haom"))
+            (host (if args (string-cadr args) "chat.freenode.net")))
+      (setq *current-connection* (make-instance 'connection :nickname nick :hostname host)))))
 
-Upon success, the server will reply with a 001 RPL_WELCOME message."
-  (nick connection nickname)
-  (user connection username mode realname))
+(define-command "whois"
+    (lambda (cmd args)
+      (send :whois (list args) nil)))
 
-;; QUIT :Gone to have lunch
-;; :syrk!kalt@millennium.stealth.net QUIT :Gone to have lunch
-;; ERROR :Closing Link: 5.146.114.134 (Client Quit)
-(defun quit (connection &optional (message "Bye"))
-  "Cleanly QUIT an IRC connection and send a message to the joined channels.
+(define-command "msg"
+    (lambda (cmd args)
+      (let ((target (string-car args)) ; a target can be a nick or a channel
+            (text (string-cdr args)))
+        (display "~A @ ~A: ~A~%" (connection-nickname *current-connection*) target text)
+        (send :privmsg (list target) text))))
 
-The server acknowledges this by sending an ERROR message to the client."
-  (send-irc-message connection :quit nil message))
+(define-command "raw"
+    (lambda (cmd args)
+      (display "/~A ~A~%" cmd args)
+      (send-raw args)))
 
-;; nickname can be a mask
-(defun whois (connection nickname)
-  (send-irc-message connection :whois (list nickname nickname) nil))
+(define-command "exit"
+    (lambda (cmd args)
+      (crt:exit-event-loop)))
+
+;; default command handler
+;; if a command isnt defined, nothing should happen at all.
+(define-command t
+    (lambda (cmd args)
+      ;; dont send anything, just display something on the output window.
+      (display "/~A ~A (default)~%" cmd args)))

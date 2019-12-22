@@ -110,11 +110,12 @@
 ;; subseq str 0 5
 ;; coerce str 'list, coerce lst 'string
 
-(defun parse (ircmsg)
+(defun parse-raw-message (ircmsg connection)
   "Take a string containing an irc message, return a irc message object."
   (let* ((lst1 (get-prefix-and-command ircmsg))
          (lst2 (get-params-and-text lst1)))
-    (make-instance 'message :ircmsg ircmsg :prefix (car lst1) :command (cadr lst1) :params (car lst2) :text (cadr lst2))))
+    (make-instance 'message :connection connection :ircmsg ircmsg :prefix (car lst1)
+                   :command (cadr lst1) :params (car lst2) :text (cadr lst2))))
 
 (defun prefix-nick (message)
   (nth 0 (get-nick-user-host (prefix message))))
@@ -124,3 +125,46 @@
 
 (defun prefix-host (message)
   (nth 2 (get-nick-user-host (prefix message))))
+
+;; Split a user line into a command, if the line beginns with /, and the text.
+;; Examples: (user-input-parse "/hello there dear john") => ("hello" "there dear john")
+;;           (user-input-parse "hello there dear john") => ("" "hello there dear john")
+;;           (user-input-parse "/hello") => ("hello" "")
+;; (parse-user-input "/hello there dear john") => ("Hello" "there dear john")
+(defun parse-user-input (str)
+  (if (char= #\/ (char str 0))
+      ;; if we have a command
+      (let ((pos (position #\space str)))
+        (if pos
+            ;; if we have a command + args
+            (cons (subseq str 1 pos) (subseq str (1+ pos)))
+            ;; if we only have a command
+            (cons (subseq str 1) nil)))
+      ;; if we have no command, only text
+      (cons nil str)))
+
+(defun string-car (str)
+  "1 2 3 => 1"
+  (let ((pos (position #\space str)))
+    (if pos
+        (subseq str 0 pos)
+        (subseq str 0))))
+
+(defun string-cdr (str)
+  "1 2 3 => 2 3"
+  (let ((pos (position #\space str)))
+    (if pos
+        (subseq str (1+ pos))
+        nil)))
+
+(defun string-cadr (str)
+  "1 2 3 => 2"
+  (string-car (string-cdr str)))
+
+(defun split-args (args-string)
+  "Take a string, return a list of substrings split on space as the delimiter."
+  (split-sequence:split-sequence #\space args-string))
+
+(defun merge-args (args-list)
+  "Take a list of strings, merge them with space as the delimiter."
+  (format nil "~{~A~^ ~}" args-list))
