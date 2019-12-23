@@ -61,18 +61,19 @@ a parsed message object, the ui object and the connection object."
         (cdr event-pair)
         nil)))
 
-(defun handle-irc-message (ircmsg connection)
-  (let* ((message (parse-raw-message ircmsg connection))
-         (event (validate (command message)))) ; return key or integer
+;; called only from girc.lisp/process-server-input
+(defun handle-message (rawmsg connection)
+  (let* ((irc-message (parse-raw-message rawmsg connection))
+         (event (validate (command irc-message)))) ; return key or integer
     ;; TODO: does validate ever return nil?
     ;; if not, we dont have to check, an irc message without an event/command cant exist
     (when event
       (let ((handler (get-event-handler event)))
         (if handler
-            (funcall handler message)
+            (funcall handler irc-message)
             ;; default action (simply print event) when no event handler has been defined.
             ;; that means that all validated events will be handled.
-            (funcall (get-event-handler t) message))))))
+            (funcall (get-event-handler t) irc-message))))))
 
 ;; here we define the event handler functions.
 ;; those do not deal with the current connection, but the connection pointer given in the message.
@@ -81,10 +82,10 @@ a parsed message object, the ui object and the connection object."
   "The default event handler will handle every valid irc event for which no handler has been specified.
 
 For now, the raw irc message will simply be displayed in the output window."
-  (display "~A~%" (ircmsg msg)))
+  (display "~A~%" (raw-message msg)))
 
 (defun ping-handler (msg)
-  (display "~A~%" (ircmsg msg))
+  (display "~A~%" (raw-message msg))
   (display "PONG :~A~%" (text msg))
   ;; return a PONG to the server which sent the PING.
   (pong (connection msg) (text msg)))

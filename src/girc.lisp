@@ -17,7 +17,7 @@
 
 ;; TODO: check that the string is max 512 bytes long including CRLF.
 ;; Example: (send-raw-message stream "USER ~A ~A * :~A" username mode realname)
-(defun send-raw-message (connection ircmsg-template &rest args)
+(defun send-raw-message (connection raw-msg-template &rest args)
   "Send an irc message string to the stream.
 
 A proper CRLF \r\n ending is added to the message before it is sent.
@@ -29,7 +29,7 @@ The allowed max length of the irc message including CRLF is 512 bytes."
   (let ((stream (connection-stream connection)))
     (apply #'format stream
            ;; then append it to the template before passing it to format.
-           (concatenate 'string ircmsg-template
+           (concatenate 'string raw-msg-template
                         ;; create a string out of \r and \n, crlf.
                         (coerce '(#\return #\linefeed) 'string))
            args)
@@ -39,8 +39,8 @@ The allowed max length of the irc message including CRLF is 512 bytes."
   "Send a raw IRC message to the current connection."
   (apply #'send-raw-message *current-connection* raw-msg-template args))
 
-(defun make-irc-message (command params text)
-  "Assemble a valid IRC protocol message without the CRLF line ending.
+(defun make-raw-message (command params text)
+  "Assemble a valid raw IRC protocol message without the CRLF line ending.
 
 Params is a list of string parameters.
 
@@ -51,11 +51,11 @@ The proper CRLF line ending is added by send-irc-message."
 
 The command should not be nil or an empty string.
 
-CL-USER> (make-irc-message 'a '("x" "y" "z") 'b)
+CL-USER> (make-raw-message 'a '("x" "y" "z") 'b)
 "A x y z :B"
-CL-USER> (make-irc-message 'a '() 'b)
+CL-USER> (make-raw-message 'a '() 'b)
 "A :B"
-CL-USER> (make-irc-message 'a '("x" "y" "z") nil)
+CL-USER> (make-raw-message 'a '("x" "y" "z") nil)
 "A x y z"
 
 |#
@@ -66,10 +66,10 @@ CL-USER> (make-irc-message 'a '("x" "y" "z") nil)
 A proper CRLF \r\n ending is added to the message before it is sent.
 
 The allowed max length of the irc message including CRLF is 512 bytes."
-  (let ((ircmsg (make-irc-message command params text))
+  (let ((rawmsg (make-raw-message command params text))
         (stream (connection-stream connection)))
     ;; create a string out of \r and \n, CRLF.
-    (write-string (concatenate 'string ircmsg (coerce '(#\return #\linefeed) 'string)) stream)
+    (write-string (concatenate 'string rawmsg (coerce '(#\return #\linefeed) 'string)) stream)
     (force-output stream)))
 
 (defun send (command params text)
@@ -84,7 +84,7 @@ The allowed max length of the irc message including CRLF is 512 bytes."
 ;; TODO: do not read lisp characters, read byte by byte (octet by octet), then interpret them as ANSI (latin1) or ASCII/UTF-8.
 ;; TODO: read chars byte by byte to a list first, then convert to a string.
 
-(defun read-irc-message (connection)
+(defun read-raw-message (connection)
   (let ((stream (connection-stream connection))
         (inbuf (make-array 0 :element-type 'character :fill-pointer 0 :adjustable t)) ;; empty string ""
         (ch-prev nil))
@@ -119,17 +119,15 @@ The allowed max length of the irc message including CRLF is 512 bytes."
 
 ;; Handler of the nil event during a non-blocking edit of the field.
 ;; TODO: check whether win is non-blocking before assuming it
-;; this should run in a separate thread
-
 (defun process-server-input (field event)
   ;; do not process if a connection has not been established first.
   (when *current-connection*
-    (let ((raw-message (read-irc-message *current-connection*)))
+    (let ((raw-message (read-raw-message *current-connection*)))
       (if raw-message
           ;; after anything is written to the output window, return the cursor to the input window.
           (crt:save-excursion (input-window *ui*)
             ;; message handline writes to the screen, so it has to happen in the main thread
-            (handle-irc-message raw-message *current-connection*)) ; see event.lisp
+            (handle-message raw-message *current-connection*)) ; see event.lisp
           (sleep 0.01)))))
 
 (defun handle-user-command (field event &rest args1)
@@ -149,15 +147,6 @@ The allowed max length of the irc message including CRLF is 512 bytes."
   (let ((wout (output-window *ui*)))
     (apply #'format wout template args)
     (crt:refresh wout)))
-
-
-
-;; every connection should run in a background thread and write to a buffer
-;; then when a connection is made current, its buffer is displayed on the ui
-;; an the user input is directed to it.
-
-
-
 
 ;; passed to the field during initialization
 (crt:define-keymap 'girc-input-map
@@ -193,7 +182,7 @@ The allowed max length of the irc message including CRLF is 512 bytes."
 
 ;; after quickloading girc, start the client with (girc:run).
 (defun run ()
-  (setq *ui* (make-instance 'interface))
+  (setq *ui* (make-instance 'user-interface))
 #|
   ;; instead of processed during a nil event, this should be moved to a worker thread.
   ;; as soon as we connect to a server, pass the stream to a background thread
@@ -215,4 +204,4 @@ The allowed max length of the irc message including CRLF is 512 bytes."
 |#
   (crt:edit (input-field *ui*))
   
-  (finalize-interface *ui*))
+  (finalize-user-interface *ui*))

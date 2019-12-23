@@ -1,9 +1,9 @@
 (in-package :de.anvi.girc)
 
-;; irc-message, ircmsg = irc protocol message string
-;; message, msg = parsed girc message object
+;; raw-message, raw-msg = raw irc protocol message string
+;; irc-message, irc-msg = parsed girc message object
 
-(defclass interface ()
+(defclass user-interface ()
   ((main-screen
     :initarg       :screen
     :initform      nil
@@ -34,7 +34,7 @@
 
   (:documentation "Elements of the user input and output interface based on croatoan/ncurses."))
 
-(defmethod initialize-instance :after ((ui interface) &key)
+(defmethod initialize-instance :after ((ui user-interface) &key)
   "Initialize the window and field objects that are part of the user interface."
   (with-slots (main-screen input-window output-window input-field) ui
     (setf main-screen   (make-instance 'crt:screen
@@ -59,7 +59,7 @@
           input-field   (make-instance 'crt:field :location (list 0 0) :width (crt:width main-screen) :window input-window
                                        :style (list :foreground nil :background nil) :keymap 'girc-input-map))))
 
-(defun finalize-interface (ui)
+(defun finalize-user-interface (ui)
   "Cleanly free ncurses object memory."
   (with-slots (input-window output-window) ui
     (close input-window)
@@ -124,7 +124,7 @@
     (setf stream (connect hostname port))
     (register con nickname 0 username realname)))
 
-(defclass message ()
+(defclass irc-message ()
   ((connection
     :initarg       :connection
     :initform      nil
@@ -132,10 +132,10 @@
     :type          (or null connection)
     :documentation "Connection from which the message was received.")
 
-   (ircmsg
-    :initarg       :ircmsg
+   (raw-message
+    :initarg       :raw-message
     :initform      nil
-    :accessor      ircmsg
+    :accessor      raw-message
     :type          (or null string)
     :documentation "As-received IRC protocol message, without the CRLF ending. (Kept for debugging purposes.)")
 
@@ -169,12 +169,11 @@
 
   (:documentation "Object representing a parsed IRC protocol message."))
 
-;; print the parsed contents of ircmsg in the repl.
+;; print the parsed contents of raw-message in the repl.
 ;; http://stackoverflow.com/questions/7382122/lisp-how-to-override-default-string-representation-for-clos-class
 ;; http://clhs.lisp.se/Body/f_pr_obj.htm
 ;; http://clhs.lisp.se/Body/m_pr_unr.htm
-(defmethod print-object ((obj message) out)
+(defmethod print-object ((obj irc-message) out)
   ;; unreadable objects are printed as <# xyz >
   (print-unreadable-object (obj out :type t)
     (format out "~S / ~S / ~S / ~S" (prefix obj) (command obj) (params obj) (text obj))))
-
