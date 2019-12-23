@@ -84,55 +84,53 @@ The allowed max length of the irc message including CRLF is 512 bytes."
 ;; TODO: do not read lisp characters, read byte by byte (octet by octet), then interpret them as ANSI (latin1) or ASCII/UTF-8.
 ;; TODO: read chars byte by byte to a list first, then convert to a string.
 
-(defun read-irc-message (stream)
-  (let ((inbuf (make-array 0 :element-type 'character :fill-pointer 0 :adjustable t)) ;; empty string ""
+(defun read-irc-message (connection)
+  (let ((stream (connection-stream connection))
+        (inbuf (make-array 0 :element-type 'character :fill-pointer 0 :adjustable t)) ;; empty string ""
         (ch-prev nil))
     (loop
        ;; this will not work with utf-8 encoded chars. (why not?)
        ;; TODO: we can not read lisp "chars", we have to read octets and put them together to chars.
        ;; we have to use something like read-byte instead of read-char
        (let ((ch (read-char-no-hang stream nil :eof)))
+         ;; if read returns a nil, read-irc-message returns a nil as a whole.
          (when ch
-           (progn
-             (when (eq ch :eof)
-               (return :eof))
-             ;; normal char, neither CR nor LF.
-             (when (and (char/= ch #\return) (char/= ch #\linefeed))
-               (vector-push-extend ch inbuf)
-               (setq ch-prev nil))
-             ;; 510 is the max number of bytes one irc message can contain.
-             ;; we here count the number of characters. problem.
-             ;; we also should check whether after 510 bytes we have crlf. only then we have a valid irc message,
-             ;; we should not simply return inbuf after every 510 chars, whether it is a valid irc message or not.
-             (when (>= (length inbuf) 510)
-               (return inbuf)
-               ;;(setf (fill-pointer inbuf) 0)
-               )
-             ;; check whether a received CR is a start of CRLF.
-             (when (char= ch #\return)
-               (setq ch-prev t))
-             ;; when we get a LF and the previous char was CR, we have a proper irc message ending.
-             (when (and (char= ch #\linefeed) ch-prev)
-               (return inbuf)
-               ;;(setf (fill-pointer inbuf) 0)
-               )))))))
+           ;; connection is ended.
+           (when (eq ch :eof)
+             (return :eof))
+           ;; normal char, neither CR nor LF.
+           (when (and (char/= ch #\return) (char/= ch #\linefeed))
+             (vector-push-extend ch inbuf)
+             (setq ch-prev nil))
+           ;; 510 is the max number of bytes one irc message can contain.
+           ;; we here count the number of characters. problem.
+           ;; we also should check whether after 510 bytes we have crlf. only then we have a valid irc message,
+           ;; we should not simply return inbuf after every 510 chars, whether it is a valid irc message or not.
+           (when (>= (length inbuf) 510)
+             (return inbuf))
+           ;; check whether a received CR is a start of CRLF.
+           (when (char= ch #\return)
+             (setq ch-prev t))
+           ;; when we get a LF and the previous char was CR, we have a proper irc message ending.
+           (when (and (char= ch #\linefeed) ch-prev)
+             (return inbuf)))))))
 
 ;; Handler of the nil event during a non-blocking edit of the field.
 ;; TODO: check whether win is non-blocking before assuming it
 ;; this should run in a separate thread
+
 (defun process-server-input (field event)
-  (sleep 0.01)
   ;; do not process if a connection has not been established first.
   (when *current-connection*
     (let ((stream (connection-stream *current-connection*)))
-      (when (listen stream)
-        ;; TODO: this should happen in a worker thread for every connected server.
-        (let ((raw-message (read-irc-message stream)))
-          (when raw-message
-            ;; after anything is written to the output window, return the cursor to the input window.
-            (crt:save-excursion (input-window *ui*)
-              ;; message handline writes to the screen, so it has to happen in the main thread
-              (handle-irc-message raw-message *current-connection*)))))))) ;; see event.lisp
+      (if (listen stream)
+          (let ((raw-message (read-irc-message *current-connection*)))
+            (when raw-message
+              ;; after anything is written to the output window, return the cursor to the input window.
+              (crt:save-excursion (input-window *ui*)
+                ;; message handline writes to the screen, so it has to happen in the main thread
+                (handle-irc-message raw-message *current-connection*)))) ; see event.lisp
+          (sleep 0.01)))))
 
 (defun handle-user-command (field event &rest args1)
   (let ((input-string (crt:value field)))
