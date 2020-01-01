@@ -24,6 +24,7 @@
 
 (define-command "msg"
     (lambda (cmd args)
+      (declare (ignore cmd))
       (let ((target (string-car args)) ; a target can be a nick or a channel
             (text (string-cdr args)))
         (display "~A @ ~A: ~A~%" (connection-nickname *current-connection*) target text)
@@ -36,7 +37,8 @@
 
 (define-command "exit"
     (lambda (cmd args)
-      (crt:exit-event-loop)))
+      (declare (ignore cmd args))
+      (crt:exit-event-loop (input-field *ui*) nil)))
 
 ;; default command handler
 ;; if a command isnt defined, nothing should happen at all.
