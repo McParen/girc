@@ -16,6 +16,6 @@
                (:file "parse")
                (:file "connection")
                (:file "protocol")
-               (:file "girc")
                (:file "event")
-               (:file "command")))))
+               (:file "command")
+               (:file "girc")))))

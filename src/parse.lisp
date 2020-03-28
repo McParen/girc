@@ -126,12 +126,16 @@
 (defun prefix-host (irc-msg)
   (nth 2 (get-nick-user-host (prefix irc-msg))))
 
-;; Split a user line into a command, if the line beginns with /, and the text.
 ;; Examples: (user-input-parse "/hello there dear john") => ("hello" "there dear john")
 ;;           (user-input-parse "hello there dear john") => ("" "hello there dear john")
 ;;           (user-input-parse "/hello") => ("hello" "")
-;; (parse-user-input "/hello there dear john") => ("Hello" "there dear john")
+;; (parse-user-input "/hello there dear john") => ("Hello" "there dear john")"
 (defun parse-user-input (str)
+  "Split a user input string into a command, if the line beginns with /, and a string of arguments.
+
+Return a pair consisting of a command string and an args string, (cmd . args).
+
+Called from handle-user-command."
   (if (char= #\/ (char str 0))
       ;; if we have a command
       (let ((pos (position #\space str)))
@@ -140,7 +144,7 @@
             (cons (subseq str 1 pos) (subseq str (1+ pos)))
             ;; if we only have a command
             (cons (subseq str 1) nil)))
-      ;; if we have no command, only text
+      ;; if we have no command, only the arguments.
       (cons nil str)))
 
 (defun string-car (str)

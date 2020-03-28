@@ -4,4 +4,5 @@
   (:export
 
    ;; girc.lisp
-   run))
+   run
+   build))

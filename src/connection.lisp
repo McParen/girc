@@ -53,6 +53,8 @@ CL-USER> (make-raw-message 'a '() 'b)
 "A :B"
 CL-USER> (make-raw-message 'a '("x" "y" "z") nil)
 "A x y z"
+CL-USER> (make-raw-message 'a nil nil)
+"A"
 
 |#
 
@@ -68,7 +70,7 @@ The allowed max length of the irc message including CRLF is 512 bytes."
     (write-string (concatenate 'string rawmsg (coerce '(#\return #\linefeed) 'string)) stream)
     (force-output stream)))
 
-(defun send (command params text)
+(defun send (command &optional params text)
   "Make and then send an IRC message to the current connection."
   (send-irc-message *current-connection* command params text))
 
@@ -112,3 +114,22 @@ The allowed max length of the irc message including CRLF is 512 bytes."
              ;; when we get a LF and the previous char was CR, we have a proper irc message ending.
              (when (and (char= ch #\linefeed) ch-prev)
                (return inbuf))))))))
+
+;; Handler of the nil event during a non-blocking edit of the field.
+;; TODO: check whether win is non-blocking before assuming it
+(defun handle-server-input (field event)
+  "Bound to nil in girc-input-map."
+  ;; do not process if a connection has not been established first.
+  (when *current-connection*
+    (let ((raw-message (read-raw-message *current-connection*))) ; see connection.lisp
+      (if raw-message
+          ;; after anything is written to the output window, return the cursor to the input window.
+          (crt:save-excursion (input-window *ui*)
+            ;; message handline writes to the screen, so it has to happen in the main thread
+            (handle-message raw-message *current-connection*)) ; see event.lisp
+          (sleep 0.01)))))
+
+;; when connecting without a network connection, we get a USOCKET:NS-TRY-AGAIN-CONDITION
+;; and get thrown in the debugger
+;; handle this
+;; also handle the sudden loss of connection            

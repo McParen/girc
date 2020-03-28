@@ -43,7 +43,12 @@
 (defparameter *event-handlers* nil
   "Alist of events (keyword or integer) and handler functions.")
 
-(defmacro define-event-handler (event handler-function)
+(defmacro define-event (event (msg) &body body)
+  `(setf *event-handlers*
+         (acons ,event (lambda ,(list msg) ,@body) *event-handlers*)))
+
+;; TODO 200328 allow event to be a list of events.
+(defmacro bind-event (event handler-function)
   "Add an irc event and an associated handler function.
 
 An event is a keyword for an irc command, or an integer for the numeric.
@@ -64,7 +69,7 @@ a parsed message object, the ui object and the connection object."
 ;; called only from girc.lisp/process-server-input
 (defun handle-message (rawmsg connection)
   (let* ((irc-message (parse-raw-message rawmsg connection))
-         (event (validate (command irc-message)))) ; return key or integer
+         (event (validate (command irc-message)))) ; return keyword or integer
     ;; TODO: does validate ever return nil?
     ;; if not, we dont have to check, an irc message without an event/command cant exist
     (when event
@@ -91,20 +96,46 @@ For now, the raw irc message will simply be displayed in the output window."
   (pong (connection msg) (text msg)))
 
 ;; Syntax:
+;;
 ;; :<prefix> PRIVMSG <target> :<text>
+;;
 ;; Examples:
+;;
 ;; :IdleOne!~idleone@ubuntu/member/idleone PRIVMSG #ubuntu :The_BROS: not at this time.
 ;; :leo!~leo@host-205-241-38-153.acelerate.net PRIVMSG #ubuntu :im a newbie
 ;; :moah!~gnu@dslb-092-073-066-073.pools.arcor-ip.net PRIVMSG arrk13 :test back
 ;; :haom!~myuser@93-142-151-146.adsl.net.t-com.hr PRIVMSG haom :hello there
+;;
 (defun privmsg-handler (msg)
   (display "~A @ ~A: ~A~%" (prefix-nick msg) (nth 0 (params msg)) (text msg)))
 
-;; then we add the handlers to events.
+;; then we add the pre-defined handlers to events.
 
-;; TODO 191220 rename to define-event-handler, so we can rhyme with define-command-handler
-;; add a way to add more handlers to an event, like cl-irc does with hooks.
+(bind-event t 'default-event-handler)
+(bind-event :ping 'ping-handler)
 
-(define-event-handler t 'default-event-handler)
-(define-event-handler :ping 'ping-handler)
-(define-event-handler :privmsg 'privmsg-handler)
+(bind-event :privmsg 'privmsg-handler)
+
+;; TODO 200328
+;; (bind-event (list 232 355 637) 'motd-handler)
+;; (bind-event motd-event-set 'motd-handler)
+
+;; Syntax:
+;;
+;; :<prefix> NOTICE <target> :<text>
+;;
+;; Examples:
+;;
+;; :kornbluth.freenode.net NOTICE * :*** Looking up your hostname...
+;; :kornbluth.freenode.net NOTICE * :*** Checking Ident
+;; :kornbluth.freenode.net NOTICE * :*** Found your hostname
+(define-event :notice (msg)
+  (display "~A~%" (text msg)))
+
+;; :kornbluth.freenode.net 372 haom :- Thank you for using freenode!
+;; :kornbluth.freenode.net 376 haom :End of /MOTD command.
+(define-event 372 (msg)
+  (display "~A~%" (text msg)))
+
+(define-event 376 (msg)
+  (display "~A~%" (text msg)))

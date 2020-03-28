@@ -56,8 +56,16 @@
                                        :enable-function-keys t
                                        ;; note that when this is nil, we plan to perform work during the nil event.
                                        :input-blocking nil)
-          input-field   (make-instance 'crt:field :location (list 0 0) :width (crt:width main-screen) :window input-window
+          input-field   (make-instance 'crt:field :position (list 0 0) :width (crt:width main-screen) :window input-window
                                        :style (list :foreground nil :background nil) :keymap 'girc-input-map))))
+
+(defparameter *ui* nil)
+
+(defun display (template &rest args)
+  "Display the format template in the output window."
+  (let ((wout (output-window *ui*)))
+    (apply #'format wout template args)
+    (crt:refresh wout)))
 
 (defun finalize-user-interface (ui)
   "Cleanly free ncurses object memory."
@@ -88,11 +96,12 @@
     :type          integer
     :documentation "Port to which the server connection is established.")
 
+   ;; SB-SYS:FD-STREAM
    (stream
     :initarg       :stream
     :initform      nil
     :accessor      connection-stream
-    :type          (or null string)
+    :type          (or null stream)
     :documentation "Hostname of the IRC server to which the connection is established.")
 
    (nickname
@@ -118,11 +127,11 @@
 
   (:documentation "Parameters necessary to establish a connection to an IRC server."))
 
-(defmethod initialize-instance :after ((con connection) &key)
+(defmethod initialize-instance :after ((connection connection) &key)
   "Initialize the window and field objects that are part of the user interface."
-  (with-slots (stream hostname port nickname username realname) con
+  (with-slots (stream hostname port nickname username realname) connection
     (setf stream (connect hostname port))
-    (register con nickname 0 username realname)))
+    (register connection nickname 0 username realname)))
 
 (defclass irc-message ()
   ((connection
