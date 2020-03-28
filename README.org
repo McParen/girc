@@ -1,1 +1,3 @@
+[[file:img/girc.png]]
+
 girc is a basic IRC client for the terminal.
