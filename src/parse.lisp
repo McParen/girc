@@ -165,6 +165,12 @@ Called from handle-user-command."
   "1 2 3 => 2"
   (string-car (string-cdr str)))
 
+(defun string-nth (n str)
+  (nth n (split-sequence:split-sequence #\space str :remove-empty-subseqs t)))
+
+(defun string-nthcdr (n str)
+  (nthcdr n (split-sequence:split-sequence #\space str :remove-empty-subseqs t)))
+
 (defun split-args (args-string)
   "Take a string, return a list of substrings split on space as the delimiter."
   (split-sequence:split-sequence #\space args-string))
