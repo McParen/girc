@@ -47,12 +47,12 @@
           output-window (make-instance 'crt:window
                                        :height (1- (crt:height main-screen))
                                        :width (crt:width main-screen)
-                                       :location '(0 0)
+                                       :position '(0 0)
                                        :enable-scrolling t)
           input-window  (make-instance 'crt:window
                                        :height 1
                                        :width (crt:width main-screen)
-                                       :location (list (1- (crt:height main-screen)) 0)
+                                       :position (list (1- (crt:height main-screen)) 0)
                                        :enable-function-keys t
                                        ;; note that when this is nil, we plan to perform work during the nil event.
                                        :input-blocking nil)
@@ -127,6 +127,7 @@
 
   (:documentation "Parameters necessary to establish a connection to an IRC server."))
 
+;; TODO 200329 creating a connection object and connecting should be two different steps
 (defmethod initialize-instance :after ((connection connection) &key)
   "Initialize the window and field objects that are part of the user interface."
   (with-slots (stream hostname port nickname username realname) connection

@@ -1,36 +1,34 @@
 (in-package :de.anvi.girc)
 
 ;; passed to the field during initialization
-(crt:define-keymap 'girc-input-map
-  (list
-
-   ;; C-a = ^A = #\soh = 1 = start of heading
-   #\soh      'crt::accept
+(crt:define-keymap girc-input-map
+  ;; C-a = ^A = #\soh = 1 = start of heading
+  (#\soh 'crt::accept)
 
    ;; C-x = cancel = CAN = #\can
-   #\can      'crt::cancel
+  (#\can 'crt::cancel)
 
-   ;; C-r = reset = DC2 = #\dc2
-   #\dc2      'crt::reset-field
+  ;; C-r = reset = DC2 = #\dc2
+  (#\dc2 'crt::reset-field)
 
-   :left      'crt::move-previous-char
-   :right     'crt::move-next-char
+  (:left 'crt::move-previous-char)
+  (:right 'crt::move-next-char)
 
-   :backspace 'crt::delete-previous-char
-   :dc        'crt::delete-next-char
+  (:backspace 'crt::delete-previous-char)
+  (:dc 'crt::delete-next-char)
    
-   :ic        (lambda (field event &rest args)
-                (setf (crt:insert-mode-p (crt:window field))
-                      (not (crt:insert-mode-p (crt:window field)))))
+  (:ic (lambda (field event &rest args)
+         (setf (crt:insert-mode-p (crt:window field))
+               (not (crt:insert-mode-p (crt:window field))))))
 
-   t          'crt::field-add-char
+  (t 'crt::field-add-char)
 
-   nil        'handle-server-input
-   #\newline  'handle-user-command
+  (nil 'handle-server-input)
+  (#\newline 'handle-user-command)
    
-   ;; C-w = 23 = #\etb = End of Transmission Block
-   #\etb      (lambda (field event &rest args)
-                (quit *current-connection*))))
+  ;; C-w = 23 = #\etb = End of Transmission Block
+  (#\etb (lambda (field event &rest args)
+           (quit *current-connection*))))
 
 ;; after quickloading girc, start the client with (girc:run).
 (defun run ()
