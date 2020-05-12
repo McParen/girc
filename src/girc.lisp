@@ -1,5 +1,7 @@
 (in-package :de.anvi.girc)
 
+;; TODO 200412 allow maps to inherit bindings from other maps.
+;; new bindings overwrite new bindings.
 ;; passed to the field during initialization
 (crt:define-keymap girc-input-map
   ;; C-a = ^A = #\soh = 1 = start of heading

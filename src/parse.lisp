@@ -156,25 +156,81 @@ Called from handle-user-command."
 
 (defun string-cdr (str)
   "1 2 3 => 2 3"
-  (let ((pos (position #\space str)))
+  (let* ((str (string-trim " " str))
+         (pos (position #\space str)))
     (if pos
-        (subseq str (1+ pos))
+        ;; remove any additional spaces
+        ;; 1  2  3 = 2  3
+        (string-left-trim " " (subseq str (1+ pos)))
         nil)))
 
 (defun string-cadr (str)
   "1 2 3 => 2"
   (string-car (string-cdr str)))
 
+;; Example: (string-nth 2 "a b c d e f") => "c"
 (defun string-nth (n str)
   (nth n (split-sequence:split-sequence #\space str :remove-empty-subseqs t)))
 
+(defun ntharg (n args)
+  (string-nth n args))
+
+;; Example: (string-nthcdr 2 "a b c d e f") => "c d e f"
 (defun string-nthcdr (n str)
+  "Take a string, return the rest that would be returned by calling string-cdr n times."
+  (let ((str (string-trim " " str)))
+    (cond ((string= "" str)
+           nil)
+          ((= n 0)
+           str)
+          ((= n 1)
+           (string-cdr str))
+          (t
+           (string-nthcdr (1- n) (string-cdr str))))))
+
+(defun nthargs (n str)
+  (string-nthcdr n str))
+
+;; Example: (string-nthcdr 2 "a b c d e f") => ("c" "d" "e" "f")
+(defun string-nthcdr- (n str)
   (nthcdr n (split-sequence:split-sequence #\space str :remove-empty-subseqs t)))
 
 (defun split-args (args-string)
   "Take a string, return a list of substrings split on space as the delimiter."
   (split-sequence:split-sequence #\space args-string))
 
-(defun merge-args (args-list)
-  "Take a list of strings, merge them with space as the delimiter."
+(defun join-args (args-list)
+  "Take a list of strings, join them with space as the delimiter."
   (format nil "~{~A~^ ~}" args-list))
+
+;; Example: (string-nth-list '(0 2) "a b c d e f") => ("a" "c")
+(defun string-nth-list (positions str)
+  "Take a string with args and a list of arg positions to return."
+  (loop for i in positions
+        collect (string-nth i str)))
+
+;; Example: (get-args "a bord c irc.com d e f" '(nick host) '(1 3))
+;; ((HOST . "irc.com") (NICK . "bord"))
+(defun get-named-args (args names positions)
+  (pairlis names (string-nth-list positions args)))
+
+;; https://stackoverflow.com/questions/25897254/lisp-creating-property-list-from-strings
+;; https://stackoverflow.com/questions/8830888/whats-the-canonical-way-to-join-strings-in-a-list
+
+;; from the cl-cookbook
+
+;; Example: (replace-all "a $B c d B e f b" "$B" "nick") => "a nick c d B e f b"
+(defun replace-all (string part replacement &key (test #'char=))
+"Returns a new string in which all the occurrences of the part is replaced with replacement."
+    (with-output-to-string (out)
+      (loop with part-length = (length part)
+            for old-pos = 0 then (+ pos part-length)
+            for pos = (search part string :start2 old-pos :test test)
+            do (write-string string out :start old-pos :end (or pos (length string)))
+            when pos do (write-string replacement out)
+            while pos)))
+
+;; we want to be able to take a string with special variables
+;; and return a string with all those variables replaced with values
+
+;; "a b ${nickname} d e" => "a b hello d e"

@@ -1,3 +1,4 @@
+
 (in-package :de.anvi.girc)
 
 ;; TODO: what about user commands like USER, WHOIS?
@@ -96,16 +97,13 @@ For now, the raw irc message will simply be displayed in the output window."
   (pong (connection msg) (text msg)))
 
 ;; Syntax:
-;;
 ;; :<prefix> PRIVMSG <target> :<text>
 ;;
 ;; Examples:
-;;
 ;; :IdleOne!~idleone@ubuntu/member/idleone PRIVMSG #ubuntu :The_BROS: not at this time.
 ;; :leo!~leo@host-205-241-38-153.acelerate.net PRIVMSG #ubuntu :im a newbie
-;; :moah!~gnu@dslb-092-073-066-073.pools.arcor-ip.net PRIVMSG arrk13 :test back
-;; :haom!~myuser@93-142-151-146.adsl.net.t-com.hr PRIVMSG haom :hello there
-;;
+;; :moah!~gnu@dslb.host-ip.net PRIVMSG arrk13 :test back
+;; :haom!~myuser@93-142-151-146.adsl.net.t-com.de PRIVMSG haom :hello there
 (defun privmsg-handler (msg)
   (display "~A @ ~A: ~A~%" (prefix-nick msg) (nth 0 (params msg)) (text msg)))
 
@@ -121,11 +119,9 @@ For now, the raw irc message will simply be displayed in the output window."
 ;; (bind-event motd-event-set 'motd-handler)
 
 ;; Syntax:
-;;
 ;; :<prefix> NOTICE <target> :<text>
 ;;
 ;; Examples:
-;;
 ;; :kornbluth.freenode.net NOTICE * :*** Looking up your hostname...
 ;; :kornbluth.freenode.net NOTICE * :*** Checking Ident
 ;; :kornbluth.freenode.net NOTICE * :*** Found your hostname
@@ -139,3 +135,74 @@ For now, the raw irc message will simply be displayed in the output window."
 
 (define-event 376 (msg)
   (display "~A~%" (text msg)))
+
+
+;;; LIST
+
+;; list #irc30
+
+;; :irc.efnet.nl 321 haom Channel :Users  Name
+;; :irc.efnet.nl 322 haom #IRC30 258 :Call your Mom :)
+;; :irc.efnet.nl 323 haom :End of /LIST
+
+;;; NAMES
+
+;;; WHOIS
+
+;; :irc.efnet.nl 311 haom haom ~myuser hostname.de * :Realname
+;; :irc.efnet.nl 319 haom ninex :#irc.awknet.ca @#proxybl @#irccloud #try2hack #port80 @#netadmins @+#eris.Berkeley.EDU #efnet @+#asciiart +#IRC30 #2600
+;; :irc.efnet.nl 312 haom haom irc.efnet.nl :>> Hax Pax Max Deus Adimax <<
+;; :irc.efnet.nl 313 haom tau :is een Bediener der IRC (IRC Operator)
+;; :irc.efnet.nl 338 haom haom 52.71.6.45 :actually using host
+;; :irc.efnet.nl 317 haom haom 72 1589142682 :seconds idle, signon time
+;; :irc.efnet.nl 318 haom haom :End of /WHOIS list.
+;; :irc.mzima.net 671 haom neonjesus :is using a secure connection
+
+;; Number:  311
+;; Event:   RPL_WHOISUSER
+;; Syntax:  311 <nick> <target nick> <user> <host> * :<real name>
+;; Comment: Reply to WHOIS - Information about the user 
+;; Example: :calvino.freenode.net 311 arrk23 arrk23 ~arrakis24 hostname-ip.net * :McLachlan
+(define-event 311 (msg)
+  (with-accessors ((params params) (text text)) msg
+    (display "~%-- Start of /WHOIS list.~%")
+    (echo "Nick: " (nth 1 params))
+    (echo "User: " (nth 2 params))
+    (echo "Host: " (nth 3 params))
+    (echo "Real: " text)))
+
+;; Number:  312
+;; Event:   RPL_WHOISSERVER
+;; Syntax:  312 <nick> <target nick> <server> :<server location>
+;; Comment: Reply to WHOIS - What server the user is on
+;; Example: :calvino.freenode.net 312 arrk23 arrk23 calvino.freenode.net :Milan, IT
+(define-event 312 (msg)
+  (with-accessors ((params params) (text text)) msg
+    (echo "Server: " (nth 2 params))
+    (echo "Message: " text)))
+
+;; Number:  338
+;; Event:   RPL_WHOISACTUALLY 
+;; Example: :irc.efnet.nl 338 haom haom 92.73.73.213 :actually using host
+(define-event 338 (msg)
+  (display "~A: ~A~%" (text msg) (nth 2 (params msg))))
+
+;; Number:  317
+;; Event:   RPL_WHOISIDLE
+;; Syntax:  317 <nick> <target nick> <idle time in seconds> <signon time in seconds> :<text>
+;; Comment: Reply to WHOIS - Idle information
+;; Example: :sendak.freenode.net 317 arrk23 arrk23 32 1316203528 :seconds idle, signon time
+;; Example: :irc.efnet.nl 317 haom haom 72 1589142682 :seconds idle, signon time
+(define-event 317 (msg)
+  (display "~A: ~A ~A~%"
+           (text msg)
+           (nth 2 (params msg))
+           (nth 3 (params msg))))
+
+;; Number:  318
+;; Event:   RPL_ENDOFWHOIS
+;; Syntax:  318 <nick> <target nick> :<info>
+;; Comment: Reply to WHOIS - End of list
+;; Example: :calvino.freenode.net 318 arrk23 arrk23 :End of /WHOIS list.
+(define-event 318 (msg)
+  (display "-- ~A~%~%" (text msg)))

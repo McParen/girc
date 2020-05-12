@@ -19,6 +19,7 @@
 The server acknowledges this by sending an ERROR message to the client."
   (send-irc-message connection :quit nil quit-message))
 
+;; not an irc command, but user and nick are
 (defun register (connection nickname mode username realname)
   "Register a connection to an irc server with a nickname and a username.
 

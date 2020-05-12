@@ -62,9 +62,24 @@
 (defparameter *ui* nil)
 
 (defun display (template &rest args)
-  "Display the format template in the output window."
+  "Display the format template and the args in the output window."
   (let ((wout (output-window *ui*)))
     (apply #'format wout template args)
+    (crt:refresh wout)))
+
+(defun echo (&rest args)
+  "Join the args to a string, then display the line in the output window.
+
+A line ending is automatically added before output.
+
+Calling echo with no arguments just outputs the newline.
+
+The argument strings can not contain format control characters.
+
+The formating should happen before the strings are passed to echo, 
+or the display function can be used which allows format controls."
+  (let ((wout (output-window *ui*)))
+    (format wout "~{~A~}~%" args)
     (crt:refresh wout)))
 
 (defun finalize-user-interface (ui)
