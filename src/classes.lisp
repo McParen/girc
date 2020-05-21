@@ -9,34 +9,41 @@
     :initform      nil
     :accessor      main-screen
     :type          (or null crt:screen)
-    :documentation "croatoan/ncurses main screen.")
+    :documentation "The main screen, not used for displaying content.")
 
    (output-window
     :initarg       :output-window
     :initform      nil
     :accessor      output-window
     :type          (or null crt:window)
-    :documentation "croatoan/ncurses window for the display of server and command output.")
+    :documentation "Window for the display of server and command output.")
 
+   (status-window
+    :initarg       :status-window
+    :initform      nil
+    :accessor      status-window
+    :type          (or null crt:window)
+    :documentation "Window for the status line.")
+   
    (input-window
     :initarg       :input-window
     :initform      nil
     :accessor      input-window
     :type          (or null crt:window)
-    :documentation "croatoan/ncurses window for the user command input.")
+    :documentation "Window for the user command input field.")
 
    (input-field
     :initarg       :input-field
     :initform      nil
     :accessor      input-field
     :type          (or null crt:field)
-    :documentation "croatoan/ncurses field for the user command input."))
+    :documentation "Field for the user command input."))
 
   (:documentation "Elements of the user input and output interface based on croatoan/ncurses."))
 
 (defmethod initialize-instance :after ((ui user-interface) &key)
   "Initialize the window and field objects that are part of the user interface."
-  (with-slots (main-screen input-window output-window input-field) ui
+  (with-slots (main-screen input-window status-window output-window input-field) ui
     (setf main-screen   (make-instance 'crt:screen
                                        :input-echoing nil
                                        :input-buffering nil
@@ -45,10 +52,14 @@
                                        :enable-colors nil
                                        :enable-function-keys t)
           output-window (make-instance 'crt:window
-                                       :height (1- (crt:height main-screen))
+                                       :height (- (crt:height main-screen) 2)
                                        :width (crt:width main-screen)
                                        :position '(0 0)
                                        :enable-scrolling t)
+          status-window (make-instance 'crt:window
+                                       :height 1
+                                       :width (crt:width main-screen)
+                                       :position (list (- (crt:height main-screen) 2) 0))
           input-window  (make-instance 'crt:window
                                        :height 1
                                        :width (crt:width main-screen)
@@ -57,9 +68,14 @@
                                        ;; note that when this is nil, we plan to perform work during the nil event.
                                        :input-blocking nil)
           input-field   (make-instance 'crt:field :position (list 0 0) :width (crt:width main-screen) :window input-window
-                                       :style (list :foreground nil :background nil) :keymap 'girc-input-map))))
+                                                  :style (list :foreground nil :background nil) :keymap 'girc-input-map))
 
-(defparameter *ui* nil)
+    ;; display a line as a placeholder for the real status line
+    ;; TODO 200519 add a function to set the status line.
+    (crt:add-char status-window #\- :n (crt:width main-screen))
+    (crt:refresh status-window)))
+
+(defparameter *ui* nil "Global variable holding an instance of the user-interface.")
 
 (defun display (template &rest args)
   "Display the format template and the args in the output window."
@@ -84,8 +100,9 @@ or the display function can be used which allows format controls."
 
 (defun finalize-user-interface (ui)
   "Cleanly free ncurses object memory."
-  (with-slots (input-window output-window) ui
+  (with-slots (input-window status-window output-window) ui
     (close input-window)
+    (close status-window)
     (close output-window)
     (crt::end-screen)))
 
