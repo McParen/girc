@@ -11,36 +11,18 @@
     ;; return the stream of the created client socket
     stream))
 
-;; TODO: check that the string is max 512 bytes long including CRLF.
-;; Example: (send-raw-message stream "USER ~A ~A * :~A" username mode realname)
-(defun send-raw-message (connection raw-msg-template &rest args)
-  "Send an irc message string to the stream.
-
-A proper CRLF \r\n ending is added to the message before it is sent.
-
-If there are additional args, ircmsg has to be a template accepting
-the proper number of format-style control strings.
-
-The allowed max length of the irc message including CRLF is 512 bytes."
-  (let ((stream (connection-stream connection)))
-    (apply #'format stream
-           ;; then append it to the template before passing it to format.
-           (concatenate 'string raw-msg-template
-                        ;; create a string out of \r and \n, crlf.
-                        (coerce '(#\return #\linefeed) 'string))
-           args)
+(defun write-irc-line (rawmsg stream)
+  "Write rawmsg to the stream followed by the IRC line ending CRLF \r\n."
+  (let ((crlf (coerce '(#\return #\linefeed) 'string)))
+    (write-string (concatenate 'string rawmsg crlf) stream)
     (force-output stream)))
-
-(defun send-raw (raw-msg-template &rest args)
-  "Send a raw IRC message to the current connection."
-  (apply #'send-raw-message *current-connection* raw-msg-template args))
 
 (defun make-raw-message (command params text)
   "Assemble a valid raw IRC protocol message without the CRLF line ending.
 
 Params is a list of string parameters.
 
-The proper CRLF line ending is added by send-irc-message."
+The proper CRLF line ending is added before it is sent."
     (format nil "~A~{ ~A~}~@[ :~A~]" command params text))
 
 #|
@@ -66,13 +48,30 @@ A proper CRLF \r\n ending is added to the message before it is sent.
 The allowed max length of the irc message including CRLF is 512 bytes."
   (let ((rawmsg (make-raw-message command params text))
         (stream (connection-stream connection)))
-    ;; create a string out of \r and \n, CRLF.
-    (write-string (concatenate 'string rawmsg (coerce '(#\return #\linefeed) 'string)) stream)
-    (force-output stream)))
+    (write-irc-line rawmsg stream)))
 
 (defun send (command &optional params text)
   "Make and then send an IRC message to the current connection."
   (send-irc-message *current-connection* command params text))
+
+;; TODO: check that the string is max 512 bytes long including CRLF.
+;; Example: (send-raw-message stream "USER ~A ~A * :~A" username mode realname)
+(defun send-raw-message (connection raw-msg-template &rest args)
+  "Send an irc message string to the connection.
+
+A proper CRLF \r\n ending is added to the message before it is sent.
+
+If there are additional args, ircmsg has to be a template accepting
+the proper number of format-style control strings.
+
+The allowed max length of the irc message including CRLF is 512 bytes."
+  (let ((stream (connection-stream connection))
+        (rawmsg (apply #'format nil raw-msg-template args)))
+    (write-irc-line rawmsg stream)))
+
+(defun send-raw (raw-msg-template &rest args)
+  "Send a raw IRC message to the current connection."
+  (apply #'send-raw-message *current-connection* raw-msg-template args))
 
 ;; read-byte from stream
 ;; utf8-to-unicode byte list to character
