@@ -17,7 +17,7 @@
         nil)))
 
 (defun commandp (cmd)
-  "If cmd is a valid IRC command, return a keyword representing it, otherwise return nil."
+  "If cmd is a valid IRC command, return t."
   (if (member (string-upcase cmd) *valid-irc-commands* :test #'string=)
       t
       nil))
@@ -44,9 +44,28 @@
 (defparameter *event-handlers* nil
   "Alist of events (keyword or integer) and handler functions.")
 
-(defmacro define-event (event (msg) &body body)
+;; (with-msg (command text) msg 'body) =>
+;; (LET ((#:G649 MSG))
+;;   (SYMBOL-MACROLET ((COMMAND (COMMAND #:G649)) (TEXT (TEXT #:G649)))
+;;     'BODY))
+(defmacro with-msg (slots message &body body)
+  "Macro like with-slots but for accessors."
+  (let ((msg (gensym)))
+    `(let ((,msg ,message))
+       (symbol-macrolet ,(mapcar (lambda (slot) `(,slot (,slot ,msg))) slots)
+         ,@body))))
+
+(defmacro define-event (event (msg . slots) &body body)
+  "Define a handler function, then bind it to the event.
+
+The function takes the parsed message as a mandatory argument.
+
+If given as additional arguments, slot names are provided in the body
+as symbol macros."
   `(setf *event-handlers*
-         (acons ,event (lambda ,(list msg) ,@body) *event-handlers*)))
+         (acons ,event
+                (lambda (,msg) (with-msg ,slots ,msg ,@body))
+                *event-handlers*)))
 
 ;; TODO 200328 allow event to be a list of events.
 (defmacro bind-event (event handler-function)
@@ -90,11 +109,17 @@ a parsed message object, the ui object and the connection object."
 For now, the raw irc message will simply be displayed in the output window."
   (display "~A~%" (raw-message msg)))
 
-(defun ping-handler (msg)
-  (display "~A~%" (raw-message msg))
-  (display "PONG :~A~%" (text msg))
+;; then we add the pre-defined handlers to events.
+
+(bind-event t 'default-event-handler)
+
+;;;
+
+(define-event :ping (msg raw-message connection text)
+  (display "~A~%" raw-message)
+  (display "PONG :~A~%" text)
   ;; return a PONG to the server which sent the PING.
-  (pong (connection msg) (text msg)))
+  (pong connection text))
 
 ;; Syntax:
 ;; :<prefix> PRIVMSG <target> :<text>
@@ -104,19 +129,8 @@ For now, the raw irc message will simply be displayed in the output window."
 ;; :leo!~leo@host-205-241-38-153.acelerate.net PRIVMSG #ubuntu :im a newbie
 ;; :moah!~gnu@dslb.host-ip.net PRIVMSG arrk13 :test back
 ;; :haom!~myuser@93-142-151-146.adsl.net.t-com.de PRIVMSG haom :hello there
-(defun privmsg-handler (msg)
-  (display "~A @ ~A: ~A~%" (prefix-nick msg) (nth 0 (params msg)) (text msg)))
-
-;; then we add the pre-defined handlers to events.
-
-(bind-event t 'default-event-handler)
-(bind-event :ping 'ping-handler)
-
-(bind-event :privmsg 'privmsg-handler)
-
-;; TODO 200328
-;; (bind-event (list 232 355 637) 'motd-handler)
-;; (bind-event motd-event-set 'motd-handler)
+(define-event :privmsg (msg prefix-nick params text)
+  (display "~A @ ~A: ~A~%" prefix-nick (nth 0 params) text))
 
 ;; Syntax:
 ;; :<prefix> NOTICE <target> :<text>
@@ -125,17 +139,16 @@ For now, the raw irc message will simply be displayed in the output window."
 ;; :kornbluth.freenode.net NOTICE * :*** Looking up your hostname...
 ;; :kornbluth.freenode.net NOTICE * :*** Checking Ident
 ;; :kornbluth.freenode.net NOTICE * :*** Found your hostname
-(define-event :notice (msg)
-  (display "~A~%" (text msg)))
+(define-event :notice (msg text)
+  (display "NOTICE: ~A~%" text))
 
 ;; :kornbluth.freenode.net 372 haom :- Thank you for using freenode!
 ;; :kornbluth.freenode.net 376 haom :End of /MOTD command.
-(define-event 372 (msg)
-  (display "~A~%" (text msg)))
+(define-event 372 (msg text)
+  (display "~A~%" text))
 
-(define-event 376 (msg)
-  (display "~A~%" (text msg)))
-
+(define-event 376 (msg text)
+  (display "~A~%" text))
 
 ;;; LIST
 
@@ -163,12 +176,12 @@ For now, the raw irc message will simply be displayed in the output window."
 ;; Syntax:  311 <nick> <target nick> <user> <host> * :<real name>
 ;; Comment: Reply to WHOIS - Information about the user 
 ;; Example: :calvino.freenode.net 311 arrk23 arrk23 ~arrakis24 hostname-ip.net * :McLachlan
-(define-event 311 (msg)
-  (with-accessors ((params params) (text text)) msg
+(define-event 311 (msg params text)
+  (destructuring-bind (nick target user host star) params
     (display "~%-- Start of /WHOIS list.~%")
-    (echo "Nick: " (nth 1 params))
-    (echo "User: " (nth 2 params))
-    (echo "Host: " (nth 3 params))
+    (echo "Nick: " nick)
+    (echo "User: " user)
+    (echo "Host: " host)
     (echo "Real: " text)))
 
 ;; Number:  312
@@ -176,16 +189,15 @@ For now, the raw irc message will simply be displayed in the output window."
 ;; Syntax:  312 <nick> <target nick> <server> :<server location>
 ;; Comment: Reply to WHOIS - What server the user is on
 ;; Example: :calvino.freenode.net 312 arrk23 arrk23 calvino.freenode.net :Milan, IT
-(define-event 312 (msg)
-  (with-accessors ((params params) (text text)) msg
-    (echo "Server: " (nth 2 params))
-    (echo "Message: " text)))
+(define-event 312 (msg params text)
+  (echo "Server: " (nth 2 params))
+  (echo "Message: " text))
 
 ;; Number:  338
 ;; Event:   RPL_WHOISACTUALLY 
 ;; Example: :irc.efnet.nl 338 haom haom 92.73.73.213 :actually using host
-(define-event 338 (msg)
-  (display "~A: ~A~%" (text msg) (nth 2 (params msg))))
+(define-event 338 (msg params text)
+  (display "~A: ~A~%" text (nth 2 params)))
 
 ;; Number:  317
 ;; Event:   RPL_WHOISIDLE
@@ -193,16 +205,14 @@ For now, the raw irc message will simply be displayed in the output window."
 ;; Comment: Reply to WHOIS - Idle information
 ;; Example: :sendak.freenode.net 317 arrk23 arrk23 32 1316203528 :seconds idle, signon time
 ;; Example: :irc.efnet.nl 317 haom haom 72 1589142682 :seconds idle, signon time
-(define-event 317 (msg)
-  (display "~A: ~A ~A~%"
-           (text msg)
-           (nth 2 (params msg))
-           (nth 3 (params msg))))
+(define-event 317 (msg params text)
+  (destructuring-bind (nick target seconds-idle signon-time) params
+    (display "~A: ~A ~A~%" text seconds-idle signon-time)))
 
 ;; Number:  318
 ;; Event:   RPL_ENDOFWHOIS
 ;; Syntax:  318 <nick> <target nick> :<info>
 ;; Comment: Reply to WHOIS - End of list
 ;; Example: :calvino.freenode.net 318 arrk23 arrk23 :End of /WHOIS list.
-(define-event 318 (msg)
-  (display "-- ~A~%~%" (text msg)))
+(define-event 318 (msg text)
+  (display "-- ~A~%~%" text))
