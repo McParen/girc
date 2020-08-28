@@ -189,6 +189,7 @@ Called from handle-user-command."
            (string-nthcdr (1- n) (string-cdr str))))))
 
 (defun nthargs (n str)
+  "Return str without the first n space-separated tokens."
   (string-nthcdr n str))
 
 ;; Example: (string-nthcdr 2 "a b c d e f") => ("c" "d" "e" "f")

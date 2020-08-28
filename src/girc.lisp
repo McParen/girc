@@ -20,8 +20,7 @@
   (:dc 'crt::delete-next-char)
    
   (:ic (lambda (field event &rest args)
-         (setf (crt:insert-mode-p (crt:window field))
-               (not (crt:insert-mode-p (crt:window field))))))
+         (crt:toggle-insert-mode field)))
 
   (t 'crt::field-add-char)
 

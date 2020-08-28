@@ -63,21 +63,43 @@ Args is a string containing all arguments given to the command."
         (host (if args (ntharg 1 args) "chat.freenode.net")))
     (setq *current-connection* (make-instance 'connection :nickname nick :hostname host))))
 
-;; Syntax: /exit
+;; /network add freenode
+;; /server add freenode irc.freenode.net 6667
+
+;; /nickname nick
+
+;; /connect freenode
+;; /connect server
+
+;; /exit
 (define-command exit (args)
   (declare (ignore args))
   (crt:exit-event-loop (input-field *ui*) nil))
 
-;; Syntax /msg target text
+;; /join #channel
+(define-command join (args)
+  (let ((channel (ntharg 0 args)))
+    (send :join (list channel))))
+
+;; /msg target text
 (define-command msg (args)
   (let ((target (ntharg 0 args)) ; a target can be a nick or a channel
         (text (nthargs 1 args)))
     (display "~A @ ~A: ~A~%" (connection-nickname *current-connection*) target text)
     (send :privmsg (list target) text)))
 
+;; /part #channel
+;; TODO check channel nil
+(define-command part (args)
+  (let ((channel (ntharg 0 args)))
+    (send :part (list channel))))
+
+;; TODO 200522 add args
+;; /quit
 (define-command quit (args)
   (send :quit))
 
+;; /raw args*
 (define-command raw (args)
   (display "/raw ~A~%" args)
   (send-raw args))
