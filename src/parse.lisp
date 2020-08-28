@@ -99,9 +99,9 @@
               nil))))
 
 ;; (parse ":prefix command p1 p2 p3 :text1 text2") => ("prefix" "command" ("p1" "p2" "p3") "text1 text2")
-(defun parse2 (raw-msg)
+(defun parse2 (rawmsg)
   "Take a string containing an irc message, return a list with parsed components."
-  (let* ((lst1 (get-prefix-and-command raw-msg))
+  (let* ((lst1 (get-prefix-and-command rawmsg))
          (lst2 (get-params-and-text lst1)))
     (append (list (car lst1) (cadr lst1)) lst2)))
 
@@ -110,11 +110,11 @@
 ;; subseq str 0 5
 ;; coerce str 'list, coerce lst 'string
 
-(defun parse-raw-message (raw-msg connection)
+(defun parse-raw-message (rawmsg connection)
   "Take a string containing an irc message, return a irc message object."
-  (let* ((lst1 (get-prefix-and-command raw-msg))
+  (let* ((lst1 (get-prefix-and-command rawmsg))
          (lst2 (get-params-and-text lst1)))
-    (make-instance 'irc-message :connection connection :raw-message raw-msg :prefix (car lst1)
+    (make-instance 'irc-message :connection connection :rawmsg rawmsg :prefix (car lst1)
                    :command (cadr lst1) :params (car lst2) :text (cadr lst2))))
 
 (defun prefix-nick (irc-msg)

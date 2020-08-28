@@ -56,7 +56,7 @@ The allowed max length of the irc message including CRLF is 512 bytes."
 
 ;; TODO: check that the string is max 512 bytes long including CRLF.
 ;; Example: (send-raw-message stream "USER ~A ~A * :~A" username mode realname)
-(defun send-raw-message (connection raw-msg-template &rest args)
+(defun send-raw-message (connection rawmsg-template &rest args)
   "Send an irc message string to the connection.
 
 A proper CRLF \r\n ending is added to the message before it is sent.
@@ -66,12 +66,12 @@ the proper number of format-style control strings.
 
 The allowed max length of the irc message including CRLF is 512 bytes."
   (let ((stream (connection-stream connection))
-        (rawmsg (apply #'format nil raw-msg-template args)))
+        (rawmsg (apply #'format nil rawmsg-template args)))
     (write-irc-line rawmsg stream)))
 
-(defun send-raw (raw-msg-template &rest args)
+(defun send-raw (rawmsg-template &rest args)
   "Send a raw IRC message to the current connection."
-  (apply #'send-raw-message *current-connection* raw-msg-template args))
+  (apply #'send-raw-message *current-connection* rawmsg-template args))
 
 ;; read-byte from stream
 ;; utf8-to-unicode byte list to character
@@ -120,12 +120,12 @@ The allowed max length of the irc message including CRLF is 512 bytes."
   "Bound to nil in girc-input-map."
   ;; do not process if a connection has not been established first.
   (when *current-connection*
-    (let ((raw-message (read-raw-message *current-connection*))) ; see connection.lisp
-      (if raw-message
+    (let ((rawmsg (read-raw-message *current-connection*))) ; see connection.lisp
+      (if rawmsg
           ;; after anything is written to the output window, return the cursor to the input window.
           (crt:save-excursion (input-window *ui*)
             ;; message handline writes to the screen, so it has to happen in the main thread
-            (handle-message raw-message *current-connection*)) ; see event.lisp
+            (handle-message rawmsg *current-connection*)) ; see event.lisp
           (sleep 0.01)))))
 
 ;; when connecting without a network connection, we get a USOCKET:NS-TRY-AGAIN-CONDITION

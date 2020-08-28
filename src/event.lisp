@@ -105,7 +105,7 @@ a parsed message object, the ui object and the connection object."
   "The default event handler will handle every valid irc event for which no handler has been specified.
 
 For now, the raw irc message will simply be displayed in the output window."
-  (echo (raw-message msg)))
+  (echo (rawmsg msg)))
 
 ;; then we add the pre-defined handlers to events.
 
@@ -134,8 +134,8 @@ For now, the raw irc message will simply be displayed in the output window."
 (define-event :quit (msg prefix-nick command text)
   (echo command prefix-nick text))
 
-(define-event :ping (msg raw-message connection text)
-  (echo raw-message)
+(define-event :ping (msg rawmsg connection text)
+  (echo rawmsg)
   (display "PONG :~A~%" text)
   ;; return a PONG to the server which sent the PING.
   (pong connection text))
@@ -212,11 +212,11 @@ For now, the raw irc message will simply be displayed in the output window."
 ;;; WHOIS
 
 ;; :irc.efnet.nl 311 haom haom ~myuser hostname.de * :Realname
-;; :irc.efnet.nl 319 haom ninex :#irc.awknet.ca @#proxybl @#irccloud #try2hack #port80 @#netadmins @+#eris.Berkeley.EDU #efnet @+#asciiart +#IRC30 #2600
 ;; :irc.efnet.nl 312 haom haom irc.efnet.nl :>> Hax Pax Max Deus Adimax <<
 ;; :irc.efnet.nl 313 haom tau :is een Bediener der IRC (IRC Operator)
 ;; :irc.efnet.nl 317 haom haom 72 1589142682 :seconds idle, signon time
 ;; :irc.efnet.nl 318 haom haom :End of /WHOIS list.
+;; :irc.efnet.nl 319 haom ninex :#irc.awknet.ca @#proxybl @#irccloud #try2hack #port80 @#netadmins @+#eris.Berkeley.EDU #efnet @+#asciiart +#IRC30 #2600
 ;; :verne.freenode.net 330 haom Joa Joa :is logged in as
 ;; :irc.efnet.nl 338 haom haom 52.71.6.45 :actually using host
 ;; :weber.freenode.net 378 haom haom :is connecting from *@93-137-20-95.adsl.net.com.com 155.17.21.5

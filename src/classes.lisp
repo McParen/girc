@@ -1,7 +1,7 @@
 (in-package :de.anvi.girc)
 
-;; raw-message, raw-msg = raw irc protocol message string
-;; irc-message, irc-msg = parsed girc message object
+;; raw-message, rawmsg = raw irc protocol message string
+;; irc-message, ircmsg = parsed girc message object
 
 (defclass user-interface ()
   ((main-screen
@@ -176,10 +176,10 @@ or the display function can be used which allows format controls."
     :type          (or null connection)
     :documentation "Connection from which the message was received.")
 
-   (raw-message
-    :initarg       :raw-message
+   (rawmsg
+    :initarg       :rawmsg
     :initform      nil
-    :accessor      raw-message
+    :accessor      rawmsg
     :type          (or null string)
     :documentation "As-received IRC protocol message, without the CRLF ending. (Kept for debugging purposes.)")
 
