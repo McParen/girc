@@ -2,6 +2,66 @@
 
 (defparameter *current-connection* nil)
 
+(defclass connection ()
+  ((name
+    :initarg       :name
+    :initform      nil
+    :accessor      connection-name
+    :type          (or null string)
+    :documentation "Name of the server to which the connection is established.")
+
+   (hostname
+    :initarg       :hostname
+    :initform      nil
+    :accessor      connection-server
+    :type          (or null string)
+    :documentation "Hostname of the IRC server to which the connection is established.")
+
+   (port
+    :initarg       :port
+    :initform      6667
+    :accessor      connection-port
+    :type          integer
+    :documentation "Port to which the server connection is established.")
+
+   ;; SB-SYS:FD-STREAM
+   (stream
+    :initarg       :stream
+    :initform      nil
+    :accessor      connection-stream
+    :type          (or null stream)
+    :documentation "Hostname of the IRC server to which the connection is established.")
+
+   (nickname
+    :initarg       :nickname
+    :initform      nil
+    :accessor      connection-nickname
+    :type          (or null string)
+    :documentation "Nickname of the user to be registered with the connected server.")
+
+   (username
+    :initarg       :username
+    :initform      "myuser"
+    :accessor      connection-username
+    :type          (or null string)
+    :documentation "Username of the user to be registered with the connected server.")
+
+   (realname
+    :initarg       :realname
+    :initform      "Realname"
+    :accessor      connection-realname
+    :type          (or null string)
+    :documentation "Realname of the user to be registered with the connected server."))
+
+  (:documentation "Parameters necessary to establish a connection to an IRC server."))
+
+;; TODO 200329 creating a connection object and connecting should be two different steps
+(defmethod initialize-instance :after ((connection connection) &key)
+  "Initialize the window and field objects that are part of the user interface."
+  (with-slots (stream hostname port nickname username realname) connection
+    (setf stream (connect hostname port))
+    (register connection nickname 0 username realname)))
+
 ;; TODO: this should be done during the initialization of the connection object
 ;; TODO: defclass 'connection, then this should be called make-connection
 (defun connect (hostname port)

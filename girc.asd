@@ -6,13 +6,15 @@
   :licence "MIT"
   :version "0.0.1"
   :depends-on (:split-sequence :usocket :croatoan)
-  ;; :serial t
-  :components ((:module "src"
-                :components ((:file "package")
-                             (:file "classes")
-                             (:file "parse")
-                             (:file "connection")
-                             (:file "protocol")
-                             (:file "event")
-                             (:file "command")
-                             (:file "girc")))))
+  :pathname "src/"
+  :serial t
+  :components
+
+  ((:file "package")
+   (:file "parse")
+   (:file "ui")
+   (:file "connection")
+   (:file "protocol")
+   (:file "event")
+   (:file "command")
+   (:file "girc")))
