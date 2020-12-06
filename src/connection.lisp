@@ -24,13 +24,18 @@
     :type          integer
     :documentation "Port to which the server connection is established.")
 
+   (socket
+    :initform      nil
+    :accessor      connection-socket
+    ;;:type          (or null usocket:socket??)
+    :documentation "Connected socket.")
+
    ;; SB-SYS:FD-STREAM
    (stream
-    :initarg       :stream
     :initform      nil
     :accessor      connection-stream
     :type          (or null stream)
-    :documentation "Hostname of the IRC server to which the connection is established.")
+    :documentation "Stream associated with the connection socket.")
 
    (nickname
     :initarg       :nickname
@@ -55,21 +60,12 @@
 
   (:documentation "Parameters necessary to establish a connection to an IRC server."))
 
-;; TODO 200329 creating a connection object and connecting should be two different steps
 (defmethod initialize-instance :after ((connection connection) &key)
   "Initialize the window and field objects that are part of the user interface."
   (with-slots (stream hostname port nickname username realname) connection
-    (setf stream (connect hostname port))
+    (setf socket (usocket:socket-connect hostname port :element-type '(unsigned-byte 8))
+          stream (usocket:socket-stream socket))
     (register connection nickname 0 username realname)))
-
-;; TODO: this should be done during the initialization of the connection object
-;; TODO: defclass 'connection, then this should be called make-connection
-(defun connect (hostname port)
-  "Connect to the IRC server given by a hostname (string) or IP and a port (integer), return a server stream."
-  (let* ((socket (usocket:socket-connect hostname port :element-type '(unsigned-byte 8)))
-         (stream (usocket:socket-stream socket)))
-    ;; return the stream of the created client socket
-    stream))
 
 (defun write-irc-line (rawmsg stream)
   "Write rawmsg to the stream followed by the line ending CRLF \r\n (13 10)."
