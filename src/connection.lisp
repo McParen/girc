@@ -66,16 +66,17 @@
 ;; TODO: defclass 'connection, then this should be called make-connection
 (defun connect (hostname port)
   "Connect to the IRC server given by a hostname (string) or IP and a port (integer), return a server stream."
-  (let* ((socket (usocket:socket-connect hostname port))
+  (let* ((socket (usocket:socket-connect hostname port :element-type '(unsigned-byte 8)))
          (stream (usocket:socket-stream socket)))
     ;; return the stream of the created client socket
     stream))
 
 (defun write-irc-line (rawmsg stream)
-  "Write rawmsg to the stream followed by the IRC line ending CRLF \r\n."
-  (let ((crlf (coerce '(#\return #\linefeed) 'string)))
-    (write-string (concatenate 'string rawmsg crlf) stream)
-    (force-output stream)))
+  "Write rawmsg to the stream followed by the line ending CRLF \r\n (13 10)."
+  (write-sequence (sb-ext:string-to-octets rawmsg) stream)
+  (write-byte 13 stream)
+  (write-byte 10 stream)
+  (force-output stream))
 
 (defun make-raw-message (command params text)
   "Assemble a valid raw IRC protocol message without the CRLF line ending.
@@ -83,7 +84,7 @@
 Params is a list of string parameters.
 
 The proper CRLF line ending is added before it is sent."
-    (format nil "~A~{ ~A~}~@[ :~A~]" command params text))
+  (format nil "~A~{ ~A~}~@[ :~A~]" command params text))
 
 #|
 
@@ -114,7 +115,7 @@ The allowed max length of the irc message including CRLF is 512 bytes."
   "Make and then send an IRC message to the current connection."
   (send-irc-message *current-connection* command params text))
 
-;; TODO: check that the string is max 512 bytes long including CRLF.
+;; TODO: check that the string is max 512 bytes long including CRLF before sending.
 ;; Example: (send-raw-message stream "USER ~A ~A * :~A" username mode realname)
 (defun send-raw-message (connection rawmsg-template &rest args)
   "Send an irc message string to the connection.
@@ -133,62 +134,53 @@ The allowed max length of the irc message including CRLF is 512 bytes."
   "Send a raw IRC message to the current connection."
   (apply #'send-raw-message *current-connection* rawmsg-template args))
 
-;; read-byte from stream
-;; utf8-to-unicode byte list to character
-;; char list to string
-
-;; graphic-char-p, dann geht aber dcc ^A nicht.
-;; TODO: do not read lisp characters, read byte by byte (octet by octet), then interpret them as ANSI (latin1) or ASCII/UTF-8.
-;; TODO: read chars byte by byte to a list first, then convert to a string.
-
 (defun read-raw-message (connection)
-  (let ((stream (connection-stream connection))
-        (inbuf (make-array 0 :element-type 'character :fill-pointer 0 :adjustable t)) ;; empty string ""
-        (ch-prev nil))
-    ;; when there is something to read from the server, read until we complete a message.
-    (when (listen stream)
-      (loop
-         ;; this will not work with utf-8 encoded chars. (why not?)
-         ;; TODO: we can not read lisp "chars", we have to read octets and put them together to chars.
-         ;; we have to use something like read-byte instead of read-char
-         (let ((ch (read-char-no-hang stream nil :eof)))
-           ;; if read returns a nil, read-irc-message returns a nil as a whole.
-           (when ch
-             ;; connection is ended.
-             (when (eq ch :eof)
-               (return :eof))
-             ;; normal char, neither CR nor LF.
-             (when (and (char/= ch #\return) (char/= ch #\linefeed))
-               (vector-push-extend ch inbuf)
-               (setq ch-prev nil))
-             ;; 510 is the max number of bytes one irc message can contain.
-             ;; we here count the number of characters. problem.
-             ;; we also should check whether after 510 bytes we have crlf. only then we have a valid irc message,
-             ;; we should not simply return inbuf after every 510 chars, whether it is a valid irc message or not.
-             (when (>= (length inbuf) 510)
-               (return inbuf))
-             ;; check whether a received CR is a start of CRLF.
-             (when (char= ch #\return)
-               (setq ch-prev t))
-             ;; when we get a LF and the previous char was CR, we have a proper irc message ending.
-             (when (and (char= ch #\linefeed) ch-prev)
-               (return inbuf))))))))
+  "Read a single IRC message from the server terminated with CRLF or EOF.
 
-;; Handler of the nil event during a non-blocking edit of the field.
-;; TODO: check whether win is non-blocking before assuming it
+Return the message without the trailing CRLF or :EOF if end of file is reached.
+
+The max allowed length of a single message is 512 bytes.
+
+If the read length including CRLF exceeds that limit, nil is returned."
+  (let ((buf (make-array 512 :fill-pointer 0 :element-type '(unsigned-byte 8)))
+        (cr-flag nil))
+    (loop for ch = (read-byte (connection-stream connection) nil :eof) do
+      (cond ((and (not (eq ch :eof))
+                  (/= ch 13)  ; CR
+                  (/= ch 10)) ; LF
+             (when cr-flag (setq cr-flag nil))
+             (unless (vector-push ch buf)
+               ;; nil is returned when the 512-byte buffer is full without a proper CRLF ending.
+               (return nil)))
+            ;; if a CR is read, set the flag to t
+            ;; check whether a received CR is a start of CRLF.
+            ((= ch 13)
+             (setq cr-flag t))
+            ;; if a LF is read immediately after a CR, return the buffer as a string.
+            ;; when we get a LF and the previous char was CR, we have a proper irc message ending.
+            ((and (= ch 10) cr-flag)
+             (return (sb-ext:octets-to-string buf)))
+            ;; connection is ended.
+            ((eq ch :eof)
+             (return :eof))))))
+
 (defun handle-server-input (field event)
-  "Bound to nil in girc-input-map."
+  "Handle the nil event during a non-blocking edit of the input field.
+
+Bound to nil in girc-input-map."
   ;; do not process if a connection has not been established first.
   (when *current-connection*
-    (let ((rawmsg (read-raw-message *current-connection*))) ; see connection.lisp
-      (if rawmsg
-          ;; after anything is written to the output window, return the cursor to the input window.
-          (crt:save-excursion (input-window *ui*)
-            ;; message handline writes to the screen, so it has to happen in the main thread
-            (handle-message rawmsg *current-connection*)) ; see event.lisp
-          (sleep 0.01)))))
-
-;; when connecting without a network connection, we get a USOCKET:NS-TRY-AGAIN-CONDITION
-;; and get thrown in the debugger
-;; handle this
-;; also handle the sudden loss of connection            
+    ;; do not read a single message then sleep then read the next.
+    ;; read as many messages as we can until listen returns nil.
+    ;; do not set a frame-rate for the nil event here, because that uses sleep, which slows down typing.
+    ;; set the input-blocking delay instead because that does not affect the input rate.
+    (loop while (listen (connection-stream *current-connection*))
+          do (let ((rawmsg (read-raw-message *current-connection*))) ; see connection.lisp
+               (if rawmsg
+                   (if (eq rawmsg :eof)
+                       (echo "Server connection lost (encountered End Of File)")
+                       ;; after anything is written to the output window, return the cursor to the input window.
+                       (crt:save-excursion (input-window *ui*)
+                         ;; message handline writes to the screen, so it has to happen in the main thread
+                         (handle-message rawmsg *current-connection*))) ; see event.lisp
+                   (echo "Not a valid IRC message (missing CRLF ending)"))))))

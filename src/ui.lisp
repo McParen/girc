@@ -64,8 +64,12 @@
                                        :width (crt:width main-screen)
                                        :position (list (1- (crt:height main-screen)) 0)
                                        :enable-function-keys t
-                                       ;; note that when this is nil, we plan to perform work during the nil event.
-                                       :input-blocking nil)
+                                       ;; When this is nil or a delay in ms, we plan to perform work during the nil event.
+                                       ;; The delay sets how often we check for server input.
+                                       ;; A too big delay might appear too slow, a small delay might strain the CPU too much.
+                                       ;; A delay of nil will lead to 100% CPU.
+                                       :input-blocking 500)
+
           input-field   (make-instance 'crt:field
                                        :position (list 0 0)
                                        :width (crt:width main-screen)
