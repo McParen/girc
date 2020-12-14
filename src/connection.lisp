@@ -13,7 +13,7 @@
    (hostname
     :initarg       :hostname
     :initform      nil
-    :accessor      connection-server
+    :accessor      connection-hostname
     :type          (or null string)
     :documentation "Hostname of the IRC server to which the connection is established.")
 
@@ -179,4 +179,8 @@ Bound to nil in girc-input-map."
                        (crt:save-excursion (input-window *ui*)
                          ;; message handline writes to the screen, so it has to happen in the main thread
                          (handle-message rawmsg *current-connection*))) ; see event.lisp
-                   (echo "Not a valid IRC message (missing CRLF ending)"))))))
+                   (echo "Not a valid IRC message (missing CRLF ending)")))))
+  ;; if the current buffer has been changed, update the display.
+  (when (buffer-changed-p *current-buffer*)
+    (crt:save-excursion (input-window *ui*)
+      (display-buffer *current-buffer*))))

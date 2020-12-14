@@ -63,28 +63,23 @@
                                        :height 1
                                        :width (crt:width main-screen)
                                        :position (list (1- (crt:height main-screen)) 0)
-                                       :enable-function-keys t
-                                       ;; When this is nil or a delay in ms, we plan to perform work during the nil event.
-                                       ;; The delay sets how often we check for server input.
-                                       ;; A too big delay might appear too slow, a small delay might strain the CPU too much.
-                                       ;; A delay of nil will lead to 100% CPU.
-                                       :input-blocking 500)
-
+                                       :enable-function-keys t)
           input-field   (make-instance 'crt:field
                                        :position (list 0 0)
                                        :width (crt:width main-screen)
                                        :window input-window
                                        :style (list :foreground nil :background nil)
-                                       :keymap 'girc-input-map))
+                                       :keymap 'girc-input-map
+                                       ;; poll the server and update the display twice per second.
+                                       :frame-rate 2))
     ;; format the status line
     (setf (crt:background status-window) (make-instance 'crt:complex-char :simple-char #\- :attributes '(:reverse)))
     (refresh ui)))
 
 (defun display (template &rest args)
   "Display the format template and the args in the output window."
-  (let ((wout (output-window *ui*)))
-    (apply #'format wout template args)
-    (crt:refresh wout)))
+  (push-to-buffer (apply #'format nil template args)
+                  *current-buffer*))
 
 (defun echo (&rest args)
   "Join the args to a string, then display the line in the output window.
@@ -99,13 +94,11 @@ The argument strings can not contain format control characters.
 
 The formating should happen before the strings are passed to echo, 
 or the display function can be used which allows format controls."
-  (let ((wout (output-window *ui*)))
-    (format wout "~{~A~^ ~}~%" args)
-    (crt:refresh wout)))
+  (push-to-buffer (format nil "~{~A~^ ~}~%" args)
+                  *current-buffer*))
 
 (defmethod refresh ((ui user-interface) &rest args)
   (with-slots (main-screen input-window status-window output-window input-field) ui
-    (crt:refresh main-screen)
     (crt:refresh input-window)
     (crt:refresh status-window)
     (crt:refresh output-window)))
@@ -118,18 +111,18 @@ or the display function can be used which allows format controls."
     (close output-window)
     (crt:end-screen)))
 
-;; display a line as a placeholder for the real status line
-;; TODO 200519 add a function to set the status line.
-;; WORK 201001
 ;; triggered by: connect
 ;; called from: connect / make-instance / after
-(defun set-status (nick host)
+(defun set-status (connection)
   "Set the status line of the current connection."
   (with-accessors ((swin status-window)) *ui*
-    (crt:clear swin)
-    (when (and nick host)
-      (crt:move swin 0 1)
-      (format swin "[~A]" nick)
-      (crt:move swin 0 20)
-      (format swin "[~A]" host))
-    (crt:refresh swin)))
+    (with-accessors ((nick connection-nickname) (host connection-hostname)) connection
+      (crt:clear swin)
+      (when (and nick host)
+        (crt:move swin 0 1)
+        (format swin "[~A]" nick)
+        (crt:move swin 0 20)
+        (format swin "[~A]" host))
+
+      ;; after we refresh the window, return the cursor to the input line, use save-excursion in echo?
+      (crt:refresh swin))))

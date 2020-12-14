@@ -12,6 +12,7 @@
 
   ((:file "package")
    (:file "parse")
+   (:file "buffer")
    (:file "ui")
    (:file "connection")
    (:file "protocol")

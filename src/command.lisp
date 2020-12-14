@@ -34,9 +34,13 @@ Bound to #\newline in girc-input-map."
                              (display "Undefined command: ~A ~A~%" cmd args))
                            cmd args)))
             ;; TODO 200328 the default command should be /say.
-            nil)))))
+            nil))))
+  ;; if the current buffer has been changed, update the display.
+  (when (buffer-changed-p *current-buffer*)
+    (crt:save-excursion (input-window *ui*)
+      (display-buffer *current-buffer*))))
 
-;; TODO 200328 add a namend block like in a defun
+;; TODO 200328 add a named block like in a defun
 (defmacro define-command (command (args) &body body)
   "Add a handler for a user command (given by a symbol).
 
@@ -61,15 +65,11 @@ Args is a string containing all arguments given to the command."
 (define-command connect (args)
   (let ((nick (if args (ntharg 0 args) "haom"))
         (host (if args (ntharg 1 args) "chat.freenode.net")))
-    (setq *current-connection* (make-instance 'connection :nickname nick :hostname host))))
 
-;; /network add freenode
-;; /server add freenode irc.freenode.net 6667
-
-;; /nickname nick
-
-;; /connect freenode
-;; /connect server
+    (setq *current-connection* (make-instance 'connection :nickname nick :hostname host))
+    
+    ;; update the status line
+    (set-status *current-connection*)))
 
 ;; /exit
 (define-command exit (args)
