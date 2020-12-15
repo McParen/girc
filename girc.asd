@@ -12,8 +12,8 @@
 
   ((:file "package")
    (:file "parse")
-   (:file "buffer")
    (:file "ui")
+   (:file "buffer")
    (:file "connection")
    (:file "protocol")
    (:file "event")

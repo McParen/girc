@@ -62,7 +62,7 @@
 
 (defmethod initialize-instance :after ((connection connection) &key)
   "Initialize the window and field objects that are part of the user interface."
-  (with-slots (stream hostname port nickname username realname) connection
+  (with-slots (socket stream hostname port nickname username realname) connection
     (setf socket (usocket:socket-connect hostname port :element-type '(unsigned-byte 8))
           stream (usocket:socket-stream socket))
     (register connection nickname 0 username realname)))
@@ -164,6 +164,7 @@ If the read length including CRLF exceeds that limit, nil is returned."
   "Handle the nil event during a non-blocking edit of the input field.
 
 Bound to nil in girc-input-map."
+  (declare (ignore field event))
   ;; do not process if a connection has not been established first.
   (when *current-connection*
     ;; do not read a single message then sleep then read the next.

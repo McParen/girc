@@ -26,6 +26,7 @@
   (:dc 'crt::delete-next-char)
 
   (:ic (lambda (field event &rest args)
+         (declare (ignore event args))
          (crt:toggle-insert-mode field)))
 
   ;; TODO 201122 only graphic chars should be added, what about :up?
@@ -43,6 +44,7 @@
   ;; C-w = 23 = #\etb = End of Transmission Block
   ;; sends a quit message to the server. (replied by the server with an error message)
   (#\etb (lambda (field event &rest args)
+           (declare (ignore field event args))
            (quit *current-connection*))))
 
 ;; after quickloading girc, start the client with (girc:run).

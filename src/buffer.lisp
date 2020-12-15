@@ -1,12 +1,5 @@
 (in-package :de.anvi.girc)
 
-;; list of buffer objects
-;; use find and the buffer name to get an object
-(defparameter *buffers* nil)
-
-;; pointer to the current selected buffer
-(defparameter *current-buffer* nil)
-
 (defclass buffer ()
   ((name
     :initarg       :name
@@ -39,7 +32,12 @@
 
   (:documentation "A buffer is a list of strings to be displayed to the output window."))
 
-(setf *current-buffer* (make-instance 'buffer))
+;; list of buffer objects
+;; use find and the buffer name to get an object
+(defparameter *buffers* nil)
+
+;; pointer to the current selected buffer
+(defparameter *current-buffer* (make-instance 'buffer))
 
 (defun push-to-buffer (string buffer)
   "Push a new line to a buffer."
@@ -54,6 +52,27 @@
         (setf lines (subseq lines 0 height)))
       ;; flag the buffer for redisplay
       (setf changedp t))))
+
+(defun display (template &rest args)
+  "Display the format template and the args in the output window."
+  (push-to-buffer (apply #'format nil template args)
+                  *current-buffer*))
+
+(defun echo (&rest args)
+  "Join the args to a string, then display the line in the output window.
+
+The args are separated by the #\space character.
+
+A line ending is automatically added before output.
+
+Calling echo with no arguments just outputs the newline.
+
+The argument strings can not contain format control characters.
+
+The formating should happen before the strings are passed to echo, 
+or the display function can be used which allows format controls."
+  (push-to-buffer (format nil "~{~A~^ ~}~%" args)
+                  *current-buffer*))
 
 (defun display-buffer (buffer)
   "Display at most height lines to the output window."
@@ -78,6 +97,7 @@
     (if (< len n)
         list
         (subseq list (- len n)))))
+
 ;; unused
 (defun firstn (n list)
   "If list is longer than n, return the first n elements, else return the list."

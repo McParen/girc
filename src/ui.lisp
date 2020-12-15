@@ -76,27 +76,6 @@
     (setf (crt:background status-window) (make-instance 'crt:complex-char :simple-char #\- :attributes '(:reverse)))
     (refresh ui)))
 
-(defun display (template &rest args)
-  "Display the format template and the args in the output window."
-  (push-to-buffer (apply #'format nil template args)
-                  *current-buffer*))
-
-(defun echo (&rest args)
-  "Join the args to a string, then display the line in the output window.
-
-The args are separated by the #\space character.
-
-A line ending is automatically added before output.
-
-Calling echo with no arguments just outputs the newline.
-
-The argument strings can not contain format control characters.
-
-The formating should happen before the strings are passed to echo, 
-or the display function can be used which allows format controls."
-  (push-to-buffer (format nil "~{~A~^ ~}~%" args)
-                  *current-buffer*))
-
 (defmethod refresh ((ui user-interface) &rest args)
   (with-slots (main-screen input-window status-window output-window input-field) ui
     (crt:refresh input-window)
