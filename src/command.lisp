@@ -1,6 +1,6 @@
 (in-package :de.anvi.girc)
 
-;;; Implementation of default user commands.
+;;; User commands
 
 (defparameter *user-commands* nil
   "Alist with user command strings as keys and functions as values.
@@ -31,7 +31,7 @@ Bound to #\newline in girc-input-map."
                   (funcall fun args)
                   ;; if no handler was found, use the default handler
                   (funcall (lambda (cmd args)
-                             (display "Undefined command: ~A ~A~%" cmd args))
+                             (display nil "Undefined command: ~A ~A~%" cmd args))
                            cmd args)))
             ;; TODO 200328 the default command should be /say.
             nil))))
@@ -56,20 +56,34 @@ Args is a string containing all arguments given to the command."
   `(setf *user-commands*
          (acons ,(symbol-name command) ,function *user-commands*)))
 
-;;; user commands
+;;; Implementation of user commands
 
 ;; send to the current server:
 ;; (send :command list-of-param-strings text-string)
+
+;; /buffer new
+;; /buffer list
+(define-command buffer (args)
+  (cond ((string-equal args "new")
+         (push (make-instance 'buffer) *buffers*))
+        ((string-equal args "list")
+         (display t "~A" *buffers*))))
 
 ;; Syntax: /connect nickname host
 (define-command connect (args)
   (let ((nick (if args (ntharg 0 args) "haom"))
         (host (if args (ntharg 1 args) "chat.freenode.net")))
 
-    (setq *current-connection* (make-instance 'connection :nickname nick :hostname host))
-    
+    ;; add a new connection to a list of connections
+    (push (make-instance 'connection :nickname nick :hostname host) *connections*)
+
+    ;; associate the current buffer with the new connection
+    ;; a new buffer is not created here, it has to be created before connecting.
+    (setf (buffer-connection *current-buffer*) (car *connections*))
+
     ;; update the status line
-    (set-status *current-connection*)))
+    ;; TODO 201217 how to show the channel?
+    (set-status (buffer-connection *current-buffer*))))
 
 ;; /exit
 (define-command exit (args)
@@ -85,7 +99,7 @@ Args is a string containing all arguments given to the command."
 (define-command msg (args)
   (let ((target (ntharg 0 args)) ; a target can be a nick or a channel
         (text (nthargs 1 args)))
-    (display "~A @ ~A: ~A~%" (connection-nickname *current-connection*) target text)
+    (display t "~A @ ~A: ~A~%" (connection-nickname (buffer-connection *current-buffer*)) target text)
     (send :privmsg (list target) text)))
 
 ;; /part #channel
@@ -101,7 +115,7 @@ Args is a string containing all arguments given to the command."
 
 ;; /raw args*
 (define-command raw (args)
-  (display "/raw ~A~%" args)
+  (display t "/raw ~A~%" args)
   (send-raw args))
 
 ;; WHOIS nick nick additionally return seconds idle signon time

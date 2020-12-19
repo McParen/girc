@@ -70,8 +70,8 @@
                                        :window input-window
                                        :style (list :foreground nil :background nil)
                                        :keymap 'girc-input-map
-                                       ;; poll the server and update the display twice per second.
-                                       :frame-rate 2))
+                                       ;; poll the server and update the display 5 times per second.
+                                       :frame-rate 5))
     ;; format the status line
     (setf (crt:background status-window) (make-instance 'crt:complex-char :simple-char #\- :attributes '(:reverse)))
     (refresh ui)))

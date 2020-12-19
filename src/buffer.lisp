@@ -1,19 +1,18 @@
 (in-package :de.anvi.girc)
 
 (defclass buffer ()
-  ((name
-    :initarg       :name
-    :initform      nil
-    :accessor      buffer-name
-    :type          (or null string)
-    :documentation "Name of the buffer.")
-
-   (connection
-    :initarg       :connection
+  ((connection
     :initform      nil
     :accessor      buffer-connection
-    ;;:type          (or null string)
-    :documentation "Pointer to the connection object.")
+    :type          (or null connection)
+    :documentation "Pointer to the current connection associated with the buffer. Added when /connect is called.")
+
+   (target
+    :initarg       :connection
+    :initform      nil
+    :accessor      buffer-target
+    :type          (or null string)
+    :documentation "Target (nick or channel) of the messages sent and received form the server.")
 
    (changedp
     :initform      nil
@@ -32,12 +31,20 @@
 
   (:documentation "A buffer is a list of strings to be displayed to the output window."))
 
-;; list of buffer objects
-;; use find and the buffer name to get an object
-(defparameter *buffers* nil)
+(defparameter *current-buffer* (make-instance 'buffer)
+  "Pointer to the current selected buffer.")
 
-;; pointer to the current selected buffer
-(defparameter *current-buffer* (make-instance 'buffer))
+(defparameter *current-buffer-number* 0)
+
+(defparameter *buffers* (list *current-buffer*)
+  "List of buffers.")
+
+(defun select-next-buffer (field event)
+  "Set the next buffer in the buffer list as the currently displayed buffer."
+  (setf *current-buffer-number* (mod (1+ *current-buffer-number*) (length *buffers*))
+        *current-buffer* (nth *current-buffer-number* (reverse *buffers*))
+        ;; flag the next buffer for display
+        (buffer-changed-p *current-buffer*) t))
 
 (defun push-to-buffer (string buffer)
   "Push a new line to a buffer."
@@ -53,14 +60,28 @@
       ;; flag the buffer for redisplay
       (setf changedp t))))
 
-(defun display (template &rest args)
-  "Display the format template and the args in the output window."
+;; TODO 201218 add the target (channel, nick) as an optional argument
+(defgeneric buffer (obj)
+  (:documentation "Return the buffer associated with the object (connection, message)."))
+
+(defmethod buffer ((msg irc-message))
+  "Loop through the list of buffers, return the buffer associated with the connection of the message."
+  (loop for buf in *buffers* do
+    (when (eq (connection msg) (buffer-connection buf))
+      (return buf))))
+
+(defun display (buffer template &rest args)
+  "Display the format template and the args in the buffer.
+
+If buffer is t, the current buffer is used."
   (push-to-buffer (apply #'format nil template args)
-                  *current-buffer*))
+                  (if (eq buffer t) *current-buffer* buffer)))
 
-(defun echo (&rest args)
-  "Join the args to a string, then display the line in the output window.
+(defun echo (buffer &rest args)
+  "Join the args to a string, then add the line to the buffer.
 
+If buffer is t, the current buffer is used.
+  
 The args are separated by the #\space character.
 
 A line ending is automatically added before output.
@@ -72,7 +93,7 @@ The argument strings can not contain format control characters.
 The formating should happen before the strings are passed to echo, 
 or the display function can be used which allows format controls."
   (push-to-buffer (format nil "~{~A~^ ~}~%" args)
-                  *current-buffer*))
+                  (if (eq buffer t) *current-buffer* buffer)))
 
 (defun display-buffer (buffer)
   "Display at most height lines to the output window."

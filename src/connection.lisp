@@ -1,16 +1,9 @@
 (in-package :de.anvi.girc)
 
-(defparameter *current-connection* nil)
+(defparameter *connections* nil)
 
 (defclass connection ()
-  ((name
-    :initarg       :name
-    :initform      nil
-    :accessor      connection-name
-    :type          (or null string)
-    :documentation "Name of the server to which the connection is established.")
-
-   (hostname
+  ((hostname
     :initarg       :hostname
     :initform      nil
     :accessor      connection-hostname
@@ -107,9 +100,10 @@ The allowed max length of the irc message including CRLF is 512 bytes."
         (stream (connection-stream connection)))
     (write-irc-line rawmsg stream)))
 
+;; used for user commands which all send to the current connection
 (defun send (command &optional params text)
   "Make and then send an IRC message to the current connection."
-  (send-irc-message *current-connection* command params text))
+  (send-irc-message (buffer-connection *current-buffer*) command params text))
 
 ;; TODO: check that the string is max 512 bytes long including CRLF before sending.
 ;; Example: (send-raw-message stream "USER ~A ~A * :~A" username mode realname)
@@ -126,9 +120,10 @@ The allowed max length of the irc message including CRLF is 512 bytes."
         (rawmsg (apply #'format nil rawmsg-template args)))
     (write-irc-line rawmsg stream)))
 
+;; used for user commands which all send to the current connection
 (defun send-raw (rawmsg-template &rest args)
   "Send a raw IRC message to the current connection."
-  (apply #'send-raw-message *current-connection* rawmsg-template args))
+  (apply #'send-raw-message (buffer-connection *current-buffer*) rawmsg-template args))
 
 (defun read-raw-message (connection)
   "Read a single IRC message from the server terminated with CRLF or EOF.
@@ -160,27 +155,36 @@ If the read length including CRLF exceeds that limit, nil is returned."
             ((eq ch :eof)
              (return :eof))))))
 
+;; we need the class definition of connection before we can specialize on it.
+;; (buffer con) is only used here in handle-server-input
+(defmethod buffer ((con connection))
+  "Loop through the list of buffers, return the buffer associated with the connection."
+  (loop for buf in *buffers* do
+    (when (eq con (buffer-connection buf))
+      (return buf))))
+
 (defun handle-server-input (field event)
   "Handle the nil event during a non-blocking edit of the input field.
 
 Bound to nil in girc-input-map."
   (declare (ignore field event))
   ;; do not process if a connection has not been established first.
-  (when *current-connection*
-    ;; do not read a single message then sleep then read the next.
-    ;; read as many messages as we can until listen returns nil.
-    ;; do not set a frame-rate for the nil event here, because that uses sleep, which slows down typing.
-    ;; set the input-blocking delay instead because that does not affect the input rate.
-    (loop while (listen (connection-stream *current-connection*))
-          do (let ((rawmsg (read-raw-message *current-connection*))) ; see connection.lisp
-               (if rawmsg
-                   (if (eq rawmsg :eof)
-                       (echo "Server connection lost (encountered End Of File)")
-                       ;; after anything is written to the output window, return the cursor to the input window.
-                       (crt:save-excursion (input-window *ui*)
-                         ;; message handline writes to the screen, so it has to happen in the main thread
-                         (handle-message rawmsg *current-connection*))) ; see event.lisp
-                   (echo "Not a valid IRC message (missing CRLF ending)")))))
+  (when *connections*
+    (loop for con in *connections* do
+      ;; do not read a single message then sleep then read the next.
+      ;; read as many messages as we can until listen returns nil.
+      ;; do not set a frame-rate for the nil event here, because that uses sleep, which slows down typing.
+      ;; set the input-blocking delay instead because that does not affect the input rate.
+      (loop while (listen (connection-stream con)) do
+        (let ((rawmsg (read-raw-message con))) ; see connection.lisp
+          (if rawmsg
+              (if (eq rawmsg :eof)
+                  (echo (buffer con) "Server connection lost (End Of File)")
+                  ;; after anything is written to the output window, return the cursor to the input window.
+                  (crt:save-excursion (input-window *ui*)
+                    ;; message handline writes to the screen, so it has to happen in the main thread
+                    (handle-message rawmsg con))) ; see event.lisp
+              (echo (buffer con) "Not a valid IRC message (missing CRLF ending)"))))))
   ;; if the current buffer has been changed, update the display.
   (when (buffer-changed-p *current-buffer*)
     (crt:save-excursion (input-window *ui*)

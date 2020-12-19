@@ -40,12 +40,15 @@
   
   (#\newline 'handle-user-command)
 
+  ;; ^N (14)
+  (#\so 'select-next-buffer)
+  
   ;; TODO 201122 how to bind irc command directly without having to wrap them in a lambda
   ;; C-w = 23 = #\etb = End of Transmission Block
   ;; sends a quit message to the server. (replied by the server with an error message)
   (#\etb (lambda (field event &rest args)
            (declare (ignore field event args))
-           (quit *current-connection*))))
+           (quit (buffer-connection *current-buffer*)))))
 
 ;; after quickloading girc, start the client with (girc:run).
 (defun run ()
@@ -60,13 +63,13 @@
   (sb-ext:save-lisp-and-die "girc" :toplevel #'girc:run :executable t :compression 9))
 
 (defun display-logo ()
-  (echo "            _____  _____    _____ ")
-  (echo "           |_   _||  __ \\  / ____|")
-  (echo "      __ _   | |  | |__) || |     ")
-  (echo "     / _` |  | |  |  _  / | |     ")
-  (echo "    | (_| | _| |_ | | \\ \\ | |____ ")
-  (echo "     \\__, ||_____||_|  \\_\\ \\_____|")
-  (echo "   |    | |")
-  (echo "   |\\___/ |")
-  (echo "    \\____/")
-  (echo ""))
+  (echo t "            _____  _____    _____ ")
+  (echo t "           |_   _||  __ \\  / ____|")
+  (echo t "      __ _   | |  | |__) || |     ")
+  (echo t "     / _` |  | |  |  _  / | |     ")
+  (echo t "    | (_| | _| |_ | | \\ \\ | |____ ")
+  (echo t "     \\__, ||_____||_|  \\_\\ \\_____|")
+  (echo t "   |    | |")
+  (echo t "   |\\___/ |")
+  (echo t "    \\____/")
+  (echo t ""))
