@@ -1,8 +1,8 @@
 (in-package :de.anvi.girc)
 
-;; TODO: what about user commands like USER, WHOIS?
-(defparameter *valid-irc-commands*
-  '("ERROR" "JOIN" "KICK" "MODE" "NICK" "NOTICE" "PART" "PING" "PRIVMSG" "QUIT" "TOPIC"))
+(defparameter *irc-commands*
+  '("ERROR" "JOIN" "KICK" "MODE" "NICK" "NOTICE" "PART" "PING" "PRIVMSG" "QUIT" "TOPIC")
+  "Commands a client can receive from the server.")
 
 ;; TODO: (every #'digit-char-p string)
 (defun numericp (cmd)
@@ -17,23 +17,25 @@
 
 (defun commandp (cmd)
   "If cmd is a valid IRC command, return t."
-  (if (member (string-upcase cmd) *valid-irc-commands* :test #'string=)
+  (if (member (string-upcase cmd) *irc-commands* :test #'string=)
       t
       nil))
 
-(defun numeric-to-integer (cmd)
-  ;; force only one return value.
-  (values (parse-integer cmd)))
+(defun numeric-to-keyword (cmd)
+  "Take the parsed integer of a numeric reply, lookup its keyword name.
+
+If the keyword is unknown, return the integer."
+  (let* ((numeric (values (parse-integer cmd)))
+         (key (cdr (assoc numeric *numerics*))))
+    (if key key numeric)))
 
 (defun command-to-keyword (cmd)
   "Return a keyword symbol representing a valid non-numeric irc command."
   (values (intern (string-upcase cmd) "KEYWORD")))
 
-;; TODO: we want users to be able to add their own event handlers using both numerics or :RPL_ keywords
-;; translate :RPL_ to a numeric before adding the event handler.
-(defun validate (cmd)
+(defun get-event-name (cmd)
   "Take a command or numeric string, return a keyword or integer representing the IRC event."
-  (cond ((numericp cmd) (numeric-to-integer cmd))
+  (cond ((numericp cmd) (numeric-to-keyword cmd))
         ((commandp cmd) (command-to-keyword cmd))
         ;; TODO: is it better to signal an error or to retun nil if the command isnt valid?
         (t (error "identify-event: event ~A not a valid irc numeric or command." cmd))))
@@ -62,7 +64,10 @@ The function takes the parsed message as a mandatory argument.
 If given as additional arguments, slot names are provided in the body
 as symbol macros."
   `(setf *event-handlers*
-         (acons ,event
+         (acons (if (eq ',event t)
+                    t
+                    ;; save the symbol as a keyword
+                    (intern (symbol-name ',event) "KEYWORD"))
                 (lambda (,msg) (with-msg ,slots ,msg ,@body))
                 *event-handlers*)))
 
@@ -75,7 +80,12 @@ The handler function takes four arguments:
 
 a parsed message object, the ui object and the connection object."
   `(setf *event-handlers*
-         (acons ,event ,handler-function *event-handlers*)))
+         (acons (if (eq ',event t)
+                    t
+                    ;; save the symbol as a keyword
+                    (intern (symbol-name ',event) "KEYWORD"))
+                ,handler-function
+                *event-handlers*)))
 
 (defun get-event-handler (event)
   "Take an irc event (keyword or integer), return the associated handler function."
@@ -84,21 +94,19 @@ a parsed message object, the ui object and the connection object."
         (cdr event-pair)
         nil)))
 
-;; called only from girc.lisp/process-server-input
+;; called only from connection.lisp/handle-server-input
 (defun handle-message (rawmsg connection)
   (let* ((irc-message (parse-raw-message rawmsg connection))
-         (event (validate (command irc-message)))) ; return keyword or integer
-    ;; TODO: does validate ever return nil?
-    ;; if not, we dont have to check, an irc message without an event/command cant exist
+         (event (get-event-name (command irc-message))))
     (when event
       (let ((handler (get-event-handler event)))
         (if handler
             (funcall handler irc-message)
-            ;; default action (simply print event) when no event handler has been defined.
-            ;; that means that all validated events will be handled.
-
-            ;; TODO 201215 check whether we have a default handler?
-            (funcall (get-event-handler t) irc-message))))))
+            ;; default action (print the raw message) when no handler has been defined.
+            (let ((default-handler (get-event-handler t)))
+              (if default-handler
+                  (funcall default-handler irc-message)
+                  (error "handle-message: no default handler defined."))))))))
 
 ;; here we define the event handler functions.
 ;; those do not deal with the current connection, but the connection pointer given in the message.
@@ -116,7 +124,7 @@ For now, the raw irc message will simply be displayed in the output window."
 ;; Comment: The target channel is on some servers param 0, sometimes the text.
 ;; Example: :haom!~myuser@78-2-83-238.adsl.net.com.com JOIN :#testus
 ;; Example: :haom!~myuser@78-2-83-238.adsl.net.com.com JOIN #testus
-(define-event :join (msg prefix-nick command params text)
+(define-event join (msg prefix-nick command params text)
   (let ((channel (cond (text text)
                        (params (nth 0 params)))))
     (echo (buffer msg) command prefix-nick channel)))
@@ -126,17 +134,17 @@ For now, the raw irc message will simply be displayed in the output window."
 ;; :kornbluth.freenode.net NOTICE * :*** Looking up your hostname...
 ;; :kornbluth.freenode.net NOTICE * :*** Checking Ident
 ;; :kornbluth.freenode.net NOTICE * :*** Found your hostname
-(define-event :notice (msg command text)
+(define-event notice (msg command text)
   (display (buffer msg) "~A: ~A~%" command text))
 
-(define-event :part (msg prefix-nick command params)
+(define-event part (msg prefix-nick command params)
   (destructuring-bind (target) params
     (echo (buffer msg) command prefix-nick target)))
 
-(define-event :quit (msg prefix-nick command text)
+(define-event quit (msg prefix-nick command text)
   (echo (buffer msg) command prefix-nick text))
 
-(define-event :ping (msg rawmsg connection text)
+(define-event ping (msg rawmsg connection text)
   (echo (buffer msg) rawmsg)
   (display (buffer msg) "PONG :~A~%" text)
   ;; return a PONG to the server which sent the PING.
@@ -150,16 +158,16 @@ For now, the raw irc message will simply be displayed in the output window."
 ;; :leo!~leo@host-205-241-38-153.acelerate.net PRIVMSG #ubuntu :im a newbie
 ;; :moah!~gnu@dslb.host-ip.net PRIVMSG arrk13 :test back
 ;; :haom!~myuser@93-142-151-146.adsl.net.com.de PRIVMSG haom :hello there
-(define-event :privmsg (msg prefix-nick params text)
+(define-event privmsg (msg prefix-nick params text)
   (destructuring-bind (target) params
     (display (buffer msg) "~A @ ~A: ~A~%" prefix-nick target text)))
 
 ;; :kornbluth.freenode.net 372 haom :- Thank you for using freenode!
 ;; :kornbluth.freenode.net 376 haom :End of /MOTD command.
-(define-event 372 (msg text)
+(define-event rpl-motd (msg text)
   (echo (buffer msg) text))
 
-(define-event 376 (msg text)
+(define-event rpl-endofmotd (msg text)
   (echo (buffer msg) text))
 
 ;; Number:
@@ -194,14 +202,14 @@ For now, the raw irc message will simply be displayed in the output window."
 ;; Event:   RPL_NAMREPLY
 ;; Syntax:  :<prefix> 353 <nick> = <channel> :<nicks>
 ;; Example: :irc.efnet.nl 353 haom = #test :@haom
-(define-event 353 (msg)
+(define-event rpl-namreply (msg)
   nil)
 
 ;; Number:  366
 ;; Event:   RPL_ENDOFNAMES
 ;; Syntax:  :<prefix> 366 <nick> <channel> :<info>
 ;; Example: :irc.efnet.nl 366 haom #test :End of /NAMES list.
-(define-event 366 (msg)
+(define-event rpl-endofnames (msg)
   nil)
 
 ;;; MODE
@@ -228,7 +236,7 @@ For now, the raw irc message will simply be displayed in the output window."
 ;; Syntax:  :<prefix> 311 <nick> <target nick> <user> <host> * :<real name>
 ;; Comment: Reply to WHOIS - Information about the user 
 ;; Example: :calvino.freenode.net 311 arrk23 arrk23 ~arrakis24 hostname-ip.net * :McLachlan
-(define-event 311 (msg params text)
+(define-event rpl-whoisuser (msg params text)
   (destructuring-bind (nick target user host star) params
     (display (buffer msg) "~%-- Start of /WHOIS list.~%")
     (echo (buffer msg) "Nick:" target)
@@ -241,7 +249,7 @@ For now, the raw irc message will simply be displayed in the output window."
 ;; Syntax:  :<prefix> 312 <nick> <target nick> <server> :<server location>
 ;; Comment: Reply to WHOIS - What server the user is on
 ;; Example: :calvino.freenode.net 312 arrk23 arrk23 calvino.freenode.net :Milan, IT
-(define-event 312 (msg params text)
+(define-event rpl-whoisserver (msg params text)
   (destructuring-bind (nick target server) params
     (echo (buffer msg) "Server:" server)
     (echo (buffer msg) "Location:" text)))
@@ -252,7 +260,7 @@ For now, the raw irc message will simply be displayed in the output window."
 ;; Comment: Reply to WHOIS - Idle information
 ;; Example: :sendak.freenode.net 317 arrk23 arrk23 32 1316203528 :seconds idle, signon time
 ;; Example: :irc.efnet.nl 317 haom haom 72 1589142682 :seconds idle, signon time
-(define-event 317 (msg params text)
+(define-event rpl-whoisidle (msg params text)
   (destructuring-bind (nick target seconds-idle signon-time) params
     (display (buffer msg) "~A: ~A ~A~%" text seconds-idle signon-time)))
 
@@ -261,14 +269,14 @@ For now, the raw irc message will simply be displayed in the output window."
 ;; Syntax:  :<prefix> 318 <nick> <target nick> :<info>
 ;; Comment: Reply to WHOIS - End of list
 ;; Example: :calvino.freenode.net 318 arrk23 arrk23 :End of /WHOIS list.
-(define-event 318 (msg text)
+(define-event rpl-endofwhois (msg text)
   (display (buffer msg) "-- ~A~%~%" text))
 
 ;; Number:  330
 ;; Event:   RPL_WHOISACCOUNT
 ;; Syntax:  :<prefix> 330 <nick> <target nick> <target authname> :<info>
 ;; Example: :verne.freenode.net 330 haom Joa Joa :is logged in as
-(define-event 330 (msg params text)
+(define-event rpl-whoisaccount (msg params text)
   (destructuring-bind (nick target authname) params
     (echo (buffer msg) target text authname)))
 
@@ -276,7 +284,7 @@ For now, the raw irc message will simply be displayed in the output window."
 ;; Event:   RPL_WHOISACTUALLY
 ;; Syntax:  :<prefix> 338 <nick> <target nick> <host ip> :<text>
 ;; Example: :irc.efnet.nl 338 haom haom 92.73.73.213 :actually using host
-(define-event 338 (msg params text)
+(define-event rpl-whoisactually (msg params text)
   (destructuring-bind (nick target host-ip) params
     (display (buffer msg) "~A: ~A~%" text host-ip)))
 
@@ -284,8 +292,16 @@ For now, the raw irc message will simply be displayed in the output window."
 ;; Event:   RPL_WHOISHOST
 ;; Syntax:  :<prefix> 378 <nick> <target> :<info>
 ;; Example: :weber.freenode.net 378 haom haom :is connecting from *@93-137-20-95.adsl.net.com.com 92.111.22.5
-(define-event 378 (msg text)
+(define-event rpl-whoishost (msg text)
   (echo (buffer msg) text))
+
+;; Number:  671
+;; Event:   RPL_WHOISSECURE
+;; Syntax:  :<prefix> 671 <client> <nick> :is using a secure connection
+;; Example: :irc.mzima.net 671 haom neonjesus :is using a secure connection
+(define-event rpl-whoissecure (msg params text)
+  (destructuring-bind (client nick) params
+    (echo (buffer msg) nick text)))
 
 ;; PART-ing a nil channel
 ;; :orwell.freenode.net 403 haom NIL :No such channel

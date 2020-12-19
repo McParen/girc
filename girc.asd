@@ -16,6 +16,7 @@
    (:file "buffer")
    (:file "connection")
    (:file "protocol")
+   (:file "numerics")
    (:file "event")
    (:file "command")
    (:file "girc")))
