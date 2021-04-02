@@ -19,7 +19,7 @@
     :accessor      buffer-changed-p
     :type          boolean
     :documentation "Flag to denote that the buffer was changed an can be redisplayed.")
-   
+
    ;; should this be a list, a queue or an array
    ;; a list should be the easiest to implement, but maybe too inefficient if we have a very long buffer
    ;; a list should be ok if the length is 50 lines.
@@ -47,18 +47,20 @@
         (buffer-changed-p *current-buffer*) t))
 
 (defun push-to-buffer (string buffer)
-  "Push a new line to a buffer."
-  (with-accessors ((lines buffer-lines) (changedp buffer-changed-p)) buffer
-    (let* ((height (crt:height (output-window *ui*)))
-           (len (length lines)))
-      (push string lines)
-      ;; if buffer is longer than some limit delete old lines
-      ;; currently the limit is the max window height
-      ;; we dont yet account for lines that are longer than one window line
-      (when (> len height)
-        (setf lines (subseq lines 0 height)))
-      ;; flag the buffer for redisplay
-      (setf changedp t))))
+  "Push a new line to the buffer.
+
+If buffer is t, the current buffer is used."
+  (let ((buffer (if (eq buffer t) *current-buffer* buffer)))
+    (with-accessors ((lines buffer-lines) (changedp buffer-changed-p)) buffer
+      (let* ((height (crt:height (output-window *ui*))))
+        (push string lines)
+        ;; if buffer is longer than some limit delete old lines
+        ;; currently the limit is the max window height
+        ;; we dont yet account for lines that are longer than one window line
+        (when (> (length lines) height)
+          (setf lines (subseq lines 0 height)))
+        ;; flag the buffer for redisplay
+        (setf changedp t)))))
 
 ;; TODO 201218 add the target (channel, nick) as an optional argument
 (defgeneric buffer (obj)
@@ -74,8 +76,7 @@
   "Display the format template and the args in the buffer.
 
 If buffer is t, the current buffer is used."
-  (push-to-buffer (apply #'format nil template args)
-                  (if (eq buffer t) *current-buffer* buffer)))
+  (push-to-buffer (apply #'format nil template args) buffer))
 
 (defun echo (buffer &rest args)
   "Join the args to a string, then add the line to the buffer.
@@ -92,8 +93,7 @@ The argument strings can not contain format control characters.
 
 The formating should happen before the strings are passed to echo, 
 or the display function can be used which allows format controls."
-  (push-to-buffer (format nil "~{~A~^ ~}~%" args)
-                  (if (eq buffer t) *current-buffer* buffer)))
+  (push-to-buffer (format nil "~{~A~^ ~}" args) buffer))
 
 (defun display-buffer (buffer)
   "Display at most height lines to the output window."
