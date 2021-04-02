@@ -98,14 +98,16 @@ or the display function can be used which allows format controls."
 (defun display-buffer (buffer)
   "Display at most height lines to the output window."
   (with-accessors ((lines buffer-lines) (changedp buffer-changed-p)) buffer
-    (let ((win (output-window *ui*))
-          (len (length lines)))
+    (let ((win (output-window *ui*)))
       (crt:clear win)
       (crt:move win 0 0)
       (loop for i from 0
             for line in (reverse lines) do
               (crt:move win i 0)
-              (princ line win))
+              (if (> (length line) (crt:width win))
+                  ;; if the line is longer than width, display only width chars.
+                  (princ (subseq line 0 (crt:width win)) win)
+                  (princ line win)))
       ;; causes flicker
       (crt:refresh win))
     ;; after the changes have been displayed, set the flag to nil
