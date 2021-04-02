@@ -135,7 +135,7 @@ For now, the raw irc message will simply be displayed in the output window."
 ;; :kornbluth.freenode.net NOTICE * :*** Checking Ident
 ;; :kornbluth.freenode.net NOTICE * :*** Found your hostname
 (define-event notice (msg command text)
-  (display (buffer msg) "~A: ~A~%" command text))
+  (display (buffer msg) "~A: ~A" command text))
 
 (define-event part (msg prefix-nick command params)
   (destructuring-bind (target) params
@@ -146,7 +146,7 @@ For now, the raw irc message will simply be displayed in the output window."
 
 (define-event ping (msg rawmsg connection text)
   (echo (buffer msg) rawmsg)
-  (display (buffer msg) "PONG :~A~%" text)
+  (display (buffer msg) "PONG :~A" text)
   ;; return a PONG to the server which sent the PING.
   (pong connection text))
 
@@ -160,7 +160,7 @@ For now, the raw irc message will simply be displayed in the output window."
 ;; :haom!~myuser@93-142-151-146.adsl.net.com.de PRIVMSG haom :hello there
 (define-event privmsg (msg prefix-nick params text)
   (destructuring-bind (target) params
-    (display (buffer msg) "~A @ ~A: ~A~%" prefix-nick target text)))
+    (display (buffer msg) "~A @ ~A: ~A" prefix-nick target text)))
 
 ;; :kornbluth.freenode.net 372 haom :- Thank you for using freenode!
 ;; :kornbluth.freenode.net 376 haom :End of /MOTD command.
@@ -238,7 +238,7 @@ For now, the raw irc message will simply be displayed in the output window."
 ;; Example: :calvino.freenode.net 311 arrk23 arrk23 ~arrakis24 hostname-ip.net * :McLachlan
 (define-event rpl-whoisuser (msg params text)
   (destructuring-bind (nick target user host star) params
-    (display (buffer msg) "~%-- Start of /WHOIS list.~%")
+    (display (buffer msg) "-- Start of /WHOIS list.")
     (echo (buffer msg) "Nick:" target)
     (echo (buffer msg) "User:" user)
     (echo (buffer msg) "Host:" host)
@@ -262,7 +262,7 @@ For now, the raw irc message will simply be displayed in the output window."
 ;; Example: :irc.efnet.nl 317 haom haom 72 1589142682 :seconds idle, signon time
 (define-event rpl-whoisidle (msg params text)
   (destructuring-bind (nick target seconds-idle signon-time) params
-    (display (buffer msg) "~A: ~A ~A~%" text seconds-idle signon-time)))
+    (display (buffer msg) "~A: ~A ~A" text seconds-idle signon-time)))
 
 ;; Number:  318
 ;; Event:   RPL_ENDOFWHOIS
@@ -270,7 +270,7 @@ For now, the raw irc message will simply be displayed in the output window."
 ;; Comment: Reply to WHOIS - End of list
 ;; Example: :calvino.freenode.net 318 arrk23 arrk23 :End of /WHOIS list.
 (define-event rpl-endofwhois (msg text)
-  (display (buffer msg) "-- ~A~%~%" text))
+  (display (buffer msg) "-- ~A" text))
 
 ;; Number:  330
 ;; Event:   RPL_WHOISACCOUNT
@@ -286,7 +286,7 @@ For now, the raw irc message will simply be displayed in the output window."
 ;; Example: :irc.efnet.nl 338 haom haom 92.73.73.213 :actually using host
 (define-event rpl-whoisactually (msg params text)
   (destructuring-bind (nick target host-ip) params
-    (display (buffer msg) "~A: ~A~%" text host-ip)))
+    (display (buffer msg) "~A: ~A" text host-ip)))
 
 ;; Number:  378
 ;; Event:   RPL_WHOISHOST

@@ -31,7 +31,7 @@ Bound to #\newline in girc-input-map."
                   (funcall fun args)
                   ;; if no handler was found, use the default handler
                   (funcall (lambda (cmd args)
-                             (display nil "Undefined command: ~A ~A~%" cmd args))
+                             (display t "Undefined command: ~A ~A" cmd args))
                            cmd args)))
             ;; TODO 200328 the default command should be /say.
             nil))))
