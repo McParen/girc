@@ -222,6 +222,27 @@ For now, the raw irc message will simply be displayed in the output window."
 ;; :irc.efnet.nl 324 haom #test +tn
 ;; :irc.efnet.nl 329 haom #test 1598613944
 
+;;; TOPIC
+
+;; Number:   332
+;; Event:    RPL_TOPIC
+;; Reply to: JOIN, TOPIC
+;; Syntax:   :<prefix> 332 <client> <channel> :<topic>
+;; Example:  :kornbluth.freenode.net 332 McParen #ubuntu :Official Ubuntu Support Channel
+(define-event rpl-topic (msg params text)
+  (destructuring-bind (client channel) params
+    (display (buffer msg) "TOPIC for ~A: ~A" channel text)))
+
+;; Number:   333
+;; Event:    RPL_TOPICWHOTIME
+;; Reply to: JOIN, TOPIC
+;; Syntax:   :<prefix> 333 <client> <channel> <nick> <setat>
+;; Example:  :kornbluth.freenode.net 333 McParen #ubuntu el!~el@ubuntu/member/el 1595009905
+;; Example:  :karatkievich.freenode.net 333 McParen #kde Mamarok 1603383031
+(define-event rpl-topicwhotime (msg params)
+  (destructuring-bind (client channel nick setat) params
+    (display (buffer msg) "TOPIC set by ~A on ~A." nick setat)))
+
 ;;; WHOIS
 
 ;; :irc.efnet.nl 311 haom haom ~myuser hostname.de * :Realname

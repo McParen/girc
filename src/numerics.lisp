@@ -12,6 +12,8 @@
     (317 . :rpl-whoisidle)
     (318 . :rpl-endofwhois)
     (330 . :rpl-whoisaccount)
+    (332 . :rpl-topic)
+    (333 . :rpl-topicwhotime)
     (338 . :rpl-whoisactually)
     (353 . :rpl-namreply)
     (366 . :rpl-endofnames)
