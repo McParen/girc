@@ -181,6 +181,10 @@ For now, the raw irc message will simply be displayed in the output window."
 ;; Comment: Reply to QUIT
 ;; Example: ERROR :Closing Link: 78-2-83-238.adsl.net.com.com (Quit: haom)
 
+(define-event error (msg text)
+  (display (buffer msg) "ERROR: ~A" text)
+  (setf (buffer-connection (buffer msg)) nil))
+
 ;;; JOIN
 
 ;; :haom!~myuser@78-2-83-238.adsl.net.com.com JOIN :#test
