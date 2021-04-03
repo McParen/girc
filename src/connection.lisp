@@ -90,40 +90,37 @@ CL-USER> (make-raw-message 'a nil nil)
 
 |#
 
-(defun send-irc-message (connection command params text)
+(defun send-raw-message (connection rawmsg)
+  "Send a valid raw irc message string to the connection.
+
+A proper CRLF \r\n ending is added to the message before it is sent.
+
+The allowed max length of the irc message including CRLF is 512 bytes."
+  (let ((connection (if (eq connection t)
+                        (buffer-connection *current-buffer*)
+                        connection)))
+    (if connection
+        (write-irc-line rawmsg (connection-stream connection))
+        (display t "-!- Current buffer not connected."))))
+
+(defun send (connection command &optional params text)
   "Assemble an irc message, then send it as a string to the stream.
 
 A proper CRLF \r\n ending is added to the message before it is sent.
 
-The allowed max length of the irc message including CRLF is 512 bytes."
-  (let ((rawmsg (make-raw-message command params text))
-        (stream (connection-stream connection)))
-    (write-irc-line rawmsg stream)))
+The allowed max length of the irc message including CRLF is 512 bytes.
 
-;; used for user commands which all send to the current connection
-(defun send (command &optional params text)
-  "Make and then send an IRC message to the current connection."
-  (send-irc-message (buffer-connection *current-buffer*) command params text))
+If connection is t, send to the current connection."
+  (send-raw-message connection (make-raw-message command params text)))
 
-;; TODO: check that the string is max 512 bytes long including CRLF before sending.
-;; Example: (send-raw-message stream "USER ~A ~A * :~A" username mode realname)
-(defun send-raw-message (connection rawmsg-template &rest args)
-  "Send an irc message string to the connection.
+(defun send-raw (connection rawmsg-template &rest args)
+  "Send a raw irc message to the connection.
 
-A proper CRLF \r\n ending is added to the message before it is sent.
-
-If there are additional args, ircmsg has to be a template accepting
+If there are additional args, rawmsg has to be a template accepting
 the proper number of format-style control strings.
 
-The allowed max length of the irc message including CRLF is 512 bytes."
-  (let ((stream (connection-stream connection))
-        (rawmsg (apply #'format nil rawmsg-template args)))
-    (write-irc-line rawmsg stream)))
-
-;; used for user commands which all send to the current connection
-(defun send-raw (rawmsg-template &rest args)
-  "Send a raw IRC message to the current connection."
-  (apply #'send-raw-message (buffer-connection *current-buffer*) rawmsg-template args))
+Example: send-raw stream \"USER ~A ~A * :~A\" username mode realname"
+  (apply #'send-raw-message connection rawmsg-template args))
 
 (defun read-raw-message (connection)
   "Read a single IRC message from the server terminated with CRLF or EOF.

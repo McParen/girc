@@ -59,7 +59,7 @@ Args is a string containing all arguments given to the command."
 ;;; Implementation of user commands
 
 ;; send to the current server:
-;; (send :command list-of-param-strings text-string)
+;; (send t :command list-of-param-strings text-string)
 
 ;; /buffer new
 ;; /buffer list
@@ -93,31 +93,31 @@ Args is a string containing all arguments given to the command."
 ;; /join #channel
 (define-command join (args)
   (let ((channel (ntharg 0 args)))
-    (send :join (list channel))))
+    (send t :join (list channel))))
 
 ;; /msg target text
 (define-command msg (args)
   (let ((target (ntharg 0 args)) ; a target can be a nick or a channel
         (text (nthargs 1 args)))
     (display t "~A @ ~A: ~A~%" (connection-nickname (buffer-connection *current-buffer*)) target text)
-    (send :privmsg (list target) text)))
+    (send t :privmsg (list target) text)))
 
 ;; /part #channel
 ;; TODO check channel nil
 (define-command part (args)
   (let ((channel (ntharg 0 args)))
-    (send :part (list channel))))
+    (send t :part (list channel))))
 
 ;; TODO 200522 add args
 ;; /quit
 (define-command quit (args)
-  (send :quit))
+  (send t :quit))
 
 ;; /raw args*
 (define-command raw (args)
   (display t "/raw ~A~%" args)
-  (send-raw args))
+  (send-raw t args))
 
 ;; WHOIS nick nick additionally return seconds idle signon time
 (define-command whois (args)
-  (send :whois (list args)))
+  (send t :whois (list args)))

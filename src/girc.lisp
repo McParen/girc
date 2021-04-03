@@ -48,7 +48,7 @@
   ;; sends a quit message to the server. (replied by the server with an error message)
   (#\etb (lambda (field event &rest args)
            (declare (ignore field event args))
-           (quit (buffer-connection *current-buffer*)))))
+           (send t :quit))))
 
 ;; after quickloading girc, start the client with (girc:run).
 (defun run ()
