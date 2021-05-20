@@ -3,7 +3,14 @@
 (defparameter *connections* nil)
 
 (defclass connection ()
-  ((hostname
+  ((name
+    :initarg       :name
+    :initform      nil
+    :accessor      connection-name
+    :type          (or null string)
+    :documentation "Name by which to refer to the connection.")
+
+   (hostname
     :initarg       :hostname
     :initform      nil
     :accessor      connection-hostname
@@ -49,16 +56,31 @@
     :initform      "Realname"
     :accessor      connection-realname
     :type          (or null string)
-    :documentation "Realname of the user to be registered with the connected server."))
+    :documentation "Realname of the user to be registered with the connected server.")
+
+   (connectedp
+    :initform      nil
+    :accessor      connectedp
+    :type          boolean
+    :documentation "Flag to denote that the server is connected."))
 
   (:documentation "Parameters necessary to establish a connection to an IRC server."))
 
-(defmethod initialize-instance :after ((connection connection) &key)
-  "Initialize the window and field objects that are part of the user interface."
-  (with-slots (socket stream hostname port nickname username realname) connection
+(defun connect (connection)
+  "Connect a socket to the host of the connection and register a nickname."
+  (with-slots (socket stream hostname port nickname username realname connectedp) connection
     (setf socket (usocket:socket-connect hostname port :element-type '(unsigned-byte 8))
-          stream (usocket:socket-stream socket))
+          stream (usocket:socket-stream socket)
+          connectedp t)
     (register connection nickname 0 username realname)))
+
+(defun disconnect (connection)
+  "Cleanly close the socket of the connection."
+  (with-slots (socket stream connectedp) connection
+    (usocket:socket-close socket)
+    (setf socket nil
+          stream nil
+          connectedp nil)))
 
 (defun write-irc-line (rawmsg stream)
   "Write rawmsg to the stream followed by the line ending CRLF \r\n (13 10)."
@@ -172,16 +194,17 @@ Bound to nil in girc-input-map."
       ;; read as many messages as we can until listen returns nil.
       ;; do not set a frame-rate for the nil event here, because that uses sleep, which slows down typing.
       ;; set the input-blocking delay instead because that does not affect the input rate.
-      (loop while (listen (connection-stream con)) do
-        (let ((rawmsg (read-raw-message con))) ; see connection.lisp
-          (if rawmsg
-              (if (eq rawmsg :eof)
-                  (echo (buffer con) "Server connection lost (End Of File)")
-                  ;; after anything is written to the output window, return the cursor to the input window.
-                  (crt:save-excursion (input-window *ui*)
-                    ;; message handline writes to the screen, so it has to happen in the main thread
-                    (handle-message rawmsg con))) ; see event.lisp
-              (echo (buffer con) "Not a valid IRC message (missing CRLF ending)"))))))
+      (when (connectedp con)
+        (loop while (listen (connection-stream con)) do
+          (let ((rawmsg (read-raw-message con))) ; see connection.lisp
+            (if rawmsg
+                (if (eq rawmsg :eof)
+                    (echo (buffer con) "Server connection lost (End Of File)")
+                    ;; after anything is written to the output window, return the cursor to the input window.
+                    (crt:save-excursion (input-window *ui*)
+                      ;; message handline writes to the screen, so it has to happen in the main thread
+                      (handle-message rawmsg con))) ; see event.lisp
+                (echo (buffer con) "Not a valid IRC message (missing CRLF ending)")))))))
   ;; if the current buffer has been changed, update the display.
   (when (buffer-changed-p *current-buffer*)
     (crt:save-excursion (input-window *ui*)

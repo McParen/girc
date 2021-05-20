@@ -69,20 +69,24 @@ Args is a string containing all arguments given to the command."
         ((string-equal args "list")
          (display t "~A" *buffers*))))
 
-;; Syntax: /connect nickname host
+;; /server add <name> <nick> <host>
+;; /server add freenode haom irc.freenode.net
+(define-command server (args)
+  (cond ((string-equal (ntharg 0 args) "add")
+         (push (make-instance 'connection :name (ntharg 1 args) :nickname (ntharg 2 args) :hostname (ntharg 3 args))
+               *connections*))
+        ((string-equal (ntharg 0 args) "list")
+         (when *connections*
+           (loop for con in *connections* do
+             (display t "~A ~A ~A" (connection-name con) (connection-hostname con) (connection-nickname con)))))))
+
+;; /connect <name>
 (define-command connect (args)
-  (let ((nick (if args (ntharg 0 args) "haom"))
-        (host (if args (ntharg 1 args) "chat.freenode.net")))
-
-    ;; add a new connection to a list of connections
-    (push (make-instance 'connection :nickname nick :hostname host) *connections*)
-
+  (let* ((name (ntharg 0 args))
+         (con (find name *connections* :key #'connection-name :test #'string-equal)))
+    (connect con)
     ;; associate the current buffer with the new connection
-    ;; a new buffer is not created here, it has to be created before connecting.
-    (setf (buffer-connection *current-buffer*) (car *connections*))
-
-    ;; update the status line
-    ;; TODO 201217 how to show the channel?
+    (setf (buffer-connection *current-buffer*) con)
     (update-status)))
 
 ;; /exit
