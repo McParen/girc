@@ -89,19 +89,3 @@
     (close status-window)
     (close output-window)
     (crt:end-screen)))
-
-;; triggered by: connect
-;; called from: connect / make-instance / after
-(defun set-status (connection)
-  "Set the status line of the current connection."
-  (with-accessors ((swin status-window)) *ui*
-    (with-accessors ((nick connection-nickname) (host connection-hostname)) connection
-      (crt:clear swin)
-      (when (and nick host)
-        (crt:move swin 0 1)
-        (format swin "[~A]" nick)
-        (crt:move swin 0 20)
-        (format swin "[~A]" host))
-
-      ;; after we refresh the window, return the cursor to the input line, use save-excursion in echo?
-      (crt:refresh swin))))

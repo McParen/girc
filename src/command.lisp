@@ -83,7 +83,7 @@ Args is a string containing all arguments given to the command."
 
     ;; update the status line
     ;; TODO 201217 how to show the channel?
-    (set-status (buffer-connection *current-buffer*))))
+    (update-status)))
 
 ;; /exit
 (define-command exit (args)

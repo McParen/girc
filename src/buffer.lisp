@@ -113,6 +113,19 @@ or the display function can be used which allows format controls."
     ;; after the changes have been displayed, set the flag to nil
     (setf changedp nil)))
 
+;; triggered by: connect
+;; called from: connect / make-instance / after
+(defun update-status ()
+  "Set the status line of the current buffer."
+  (with-accessors ((swin status-window)) *ui*
+    (with-accessors ((nick connection-nickname) (host connection-hostname)) (buffer-connection *current-buffer*)
+      (crt:clear swin)
+      (when (and nick host)
+        (crt:move swin 0 1)  (format swin "[~A]" nick)
+        (crt:move swin 0 20) (format swin "[~A]" host))
+      ;; after we refresh the window, return the cursor to the input line, use save-excursion in echo?
+      (crt:refresh swin))))
+
 ;; unused
 (defun lastn (n list)
   "If list is longer than n, return the last n elements, else return the list."
