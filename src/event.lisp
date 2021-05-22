@@ -183,6 +183,7 @@ For now, the raw irc message will simply be displayed in the output window."
 
 (define-event error (msg text)
   (display (buffer msg) "ERROR: ~A" text)
+  (disconnect (buffer-connection (buffer msg)))
   (setf (buffer-connection (buffer msg)) nil))
 
 ;;; JOIN
@@ -296,6 +297,14 @@ For now, the raw irc message will simply be displayed in the output window."
 ;; Example: :calvino.freenode.net 318 arrk23 arrk23 :End of /WHOIS list.
 (define-event rpl-endofwhois (msg text)
   (display (buffer msg) "-- ~A" text))
+
+;; Number:  319
+;; Event:   RPL_WHOISCHANNELS
+;; Syntax:  :<prefix> 318 <nick> <target nick> :{[@|+]<channel><space>}
+;; Comment: Reply to WHOIS - Channel list for user
+;; Example: :verne.freenode.net 319 McParen McParen :#python
+(define-event rpl-whoischannels (msg text)
+  (echo (buffer msg) "Channels: " text))
 
 ;; Number:  330
 ;; Event:   RPL_WHOISACCOUNT
