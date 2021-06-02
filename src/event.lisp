@@ -124,29 +124,29 @@ For now, the raw irc message will simply be displayed in the output window."
 ;; Comment: The target channel is on some servers param 0, sometimes the text.
 ;; Example: :haom!~myuser@78-2-83-238.adsl.net.com.com JOIN :#testus
 ;; Example: :haom!~myuser@78-2-83-238.adsl.net.com.com JOIN #testus
-(define-event join (msg prefix-nick command params text)
+(define-event join (msg buffer prefix-nick command params text)
   (let ((channel (cond (text text)
                        (params (nth 0 params)))))
-    (echo (buffer msg) command prefix-nick channel)))
+    (echo buffer command prefix-nick channel)))
 
 ;; Syntax: :<prefix> NOTICE <target> :<text>
 ;; Examples:
 ;; :kornbluth.freenode.net NOTICE * :*** Looking up your hostname...
 ;; :kornbluth.freenode.net NOTICE * :*** Checking Ident
 ;; :kornbluth.freenode.net NOTICE * :*** Found your hostname
-(define-event notice (msg command text)
-  (display (buffer msg) "~A: ~A" command text))
+(define-event notice (msg buffer command text)
+  (display buffer "~A: ~A" command text))
 
-(define-event part (msg prefix-nick command params)
+(define-event part (msg buffer prefix-nick command params)
   (destructuring-bind (target) params
-    (echo (buffer msg) command prefix-nick target)))
+    (echo buffer command prefix-nick target)))
 
-(define-event quit (msg prefix-nick command text)
-  (echo (buffer msg) command prefix-nick text))
+(define-event quit (msg buffer prefix-nick command text)
+  (echo buffer command prefix-nick text))
 
-(define-event ping (msg rawmsg connection text)
-  (echo (buffer msg) rawmsg)
-  (display (buffer msg) "PONG :~A" text)
+(define-event ping (msg buffer rawmsg connection text)
+  (echo buffer rawmsg)
+  (display buffer "PONG :~A" text)
   ;; return a PONG to the server which sent the PING.
   (pong connection text))
 
@@ -158,17 +158,17 @@ For now, the raw irc message will simply be displayed in the output window."
 ;; :leo!~leo@host-205-241-38-153.acelerate.net PRIVMSG #ubuntu :im a newbie
 ;; :moah!~gnu@dslb.host-ip.net PRIVMSG arrk13 :test back
 ;; :haom!~myuser@93-142-151-146.adsl.net.com.de PRIVMSG haom :hello there
-(define-event privmsg (msg prefix-nick params text)
+(define-event privmsg (msg buffer prefix-nick params text)
   (destructuring-bind (target) params
-    (display (buffer msg) "~A @ ~A: ~A" prefix-nick target text)))
+    (display buffer "~A @ ~A: ~A" prefix-nick target text)))
 
 ;; :kornbluth.freenode.net 372 haom :- Thank you for using freenode!
 ;; :kornbluth.freenode.net 376 haom :End of /MOTD command.
-(define-event rpl-motd (msg text)
-  (echo (buffer msg) text))
+(define-event rpl-motd (msg buffer text)
+  (echo buffer text))
 
-(define-event rpl-endofmotd (msg text)
-  (echo (buffer msg) text))
+(define-event rpl-endofmotd (msg buffer text)
+  (echo buffer text))
 
 ;; Number:
 ;; Event:
@@ -181,10 +181,10 @@ For now, the raw irc message will simply be displayed in the output window."
 ;; Comment: Reply to QUIT
 ;; Example: ERROR :Closing Link: 78-2-83-238.adsl.net.com.com (Quit: haom)
 
-(define-event error (msg text)
-  (display (buffer msg) "ERROR: ~A" text)
-  (disconnect (buffer-connection (buffer msg)))
-  (setf (buffer-connection (buffer msg)) nil))
+(define-event error (msg buffer connection text)
+  (display buffer "ERROR: ~A" text)
+  (disconnect connection)
+  (update-status))
 
 ;;; JOIN
 
@@ -230,9 +230,9 @@ For now, the raw irc message will simply be displayed in the output window."
 ;; Reply to: JOIN, TOPIC
 ;; Syntax:   :<prefix> 332 <client> <channel> :<topic>
 ;; Example:  :kornbluth.freenode.net 332 McParen #ubuntu :Official Ubuntu Support Channel
-(define-event rpl-topic (msg params text)
+(define-event rpl-topic (msg buffer params text)
   (destructuring-bind (client channel) params
-    (display (buffer msg) "TOPIC for ~A: ~A" channel text)))
+    (display buffer "TOPIC for ~A: ~A" channel text)))
 
 ;; Number:   333
 ;; Event:    RPL_TOPICWHOTIME
@@ -240,9 +240,9 @@ For now, the raw irc message will simply be displayed in the output window."
 ;; Syntax:   :<prefix> 333 <client> <channel> <nick> <setat>
 ;; Example:  :kornbluth.freenode.net 333 McParen #ubuntu el!~el@ubuntu/member/el 1595009905
 ;; Example:  :karatkievich.freenode.net 333 McParen #kde Mamarok 1603383031
-(define-event rpl-topicwhotime (msg params)
+(define-event rpl-topicwhotime (msg buffer params)
   (destructuring-bind (client channel nick setat) params
-    (display (buffer msg) "TOPIC set by ~A on ~A." nick setat)))
+    (display buffer "TOPIC set by ~A on ~A." nick setat)))
 
 ;;; WHOIS
 
@@ -262,23 +262,23 @@ For now, the raw irc message will simply be displayed in the output window."
 ;; Syntax:  :<prefix> 311 <nick> <target nick> <user> <host> * :<real name>
 ;; Comment: Reply to WHOIS - Information about the user 
 ;; Example: :calvino.freenode.net 311 arrk23 arrk23 ~arrakis24 hostname-ip.net * :McLachlan
-(define-event rpl-whoisuser (msg params text)
+(define-event rpl-whoisuser (msg buffer params text)
   (destructuring-bind (nick target user host star) params
-    (display (buffer msg) "-- Start of /WHOIS list.")
-    (echo (buffer msg) "Nick:" target)
-    (echo (buffer msg) "User:" user)
-    (echo (buffer msg) "Host:" host)
-    (echo (buffer msg) "Real:" text)))
+    (display buffer "-- Start of /WHOIS list.")
+    (echo buffer "Nick:" target)
+    (echo buffer "User:" user)
+    (echo buffer "Host:" host)
+    (echo buffer "Real:" text)))
 
 ;; Number:  312
 ;; Event:   RPL_WHOISSERVER
 ;; Syntax:  :<prefix> 312 <nick> <target nick> <server> :<server location>
 ;; Comment: Reply to WHOIS - What server the user is on
 ;; Example: :calvino.freenode.net 312 arrk23 arrk23 calvino.freenode.net :Milan, IT
-(define-event rpl-whoisserver (msg params text)
+(define-event rpl-whoisserver (msg buffer params text)
   (destructuring-bind (nick target server) params
-    (echo (buffer msg) "Server:" server)
-    (echo (buffer msg) "Location:" text)))
+    (echo buffer "Server:" server)
+    (echo buffer "Location:" text)))
 
 ;; Number:  317
 ;; Event:   RPL_WHOISIDLE
@@ -286,56 +286,56 @@ For now, the raw irc message will simply be displayed in the output window."
 ;; Comment: Reply to WHOIS - Idle information
 ;; Example: :sendak.freenode.net 317 arrk23 arrk23 32 1316203528 :seconds idle, signon time
 ;; Example: :irc.efnet.nl 317 haom haom 72 1589142682 :seconds idle, signon time
-(define-event rpl-whoisidle (msg params text)
+(define-event rpl-whoisidle (msg buffer params text)
   (destructuring-bind (nick target seconds-idle signon-time) params
-    (display (buffer msg) "~A: ~A ~A" text seconds-idle signon-time)))
+    (display buffer "~A: ~A ~A" text seconds-idle signon-time)))
 
 ;; Number:  318
 ;; Event:   RPL_ENDOFWHOIS
 ;; Syntax:  :<prefix> 318 <nick> <target nick> :<info>
 ;; Comment: Reply to WHOIS - End of list
 ;; Example: :calvino.freenode.net 318 arrk23 arrk23 :End of /WHOIS list.
-(define-event rpl-endofwhois (msg text)
-  (display (buffer msg) "-- ~A" text))
+(define-event rpl-endofwhois (msg buffer text)
+  (display buffer "-- ~A" text))
 
 ;; Number:  319
 ;; Event:   RPL_WHOISCHANNELS
 ;; Syntax:  :<prefix> 318 <nick> <target nick> :{[@|+]<channel><space>}
 ;; Comment: Reply to WHOIS - Channel list for user
 ;; Example: :verne.freenode.net 319 McParen McParen :#python
-(define-event rpl-whoischannels (msg text)
-  (echo (buffer msg) "Channels: " text))
+(define-event rpl-whoischannels (msg buffer text)
+  (echo buffer "Channels: " text))
 
 ;; Number:  330
 ;; Event:   RPL_WHOISACCOUNT
 ;; Syntax:  :<prefix> 330 <nick> <target nick> <target authname> :<info>
 ;; Example: :verne.freenode.net 330 haom Joa Joa :is logged in as
-(define-event rpl-whoisaccount (msg params text)
+(define-event rpl-whoisaccount (msg buffer params text)
   (destructuring-bind (nick target authname) params
-    (echo (buffer msg) target text authname)))
+    (echo buffer target text authname)))
 
 ;; Number:  338
 ;; Event:   RPL_WHOISACTUALLY
 ;; Syntax:  :<prefix> 338 <nick> <target nick> <host ip> :<text>
 ;; Example: :irc.efnet.nl 338 haom haom 92.73.73.213 :actually using host
-(define-event rpl-whoisactually (msg params text)
+(define-event rpl-whoisactually (msg buffer params text)
   (destructuring-bind (nick target host-ip) params
-    (display (buffer msg) "~A: ~A" text host-ip)))
+    (display buffer "~A: ~A" text host-ip)))
 
 ;; Number:  378
 ;; Event:   RPL_WHOISHOST
 ;; Syntax:  :<prefix> 378 <nick> <target> :<info>
 ;; Example: :weber.freenode.net 378 haom haom :is connecting from *@93-137-20-95.adsl.net.com.com 92.111.22.5
-(define-event rpl-whoishost (msg text)
-  (echo (buffer msg) text))
+(define-event rpl-whoishost (msg buffer text)
+  (echo buffer text))
 
 ;; Number:  671
 ;; Event:   RPL_WHOISSECURE
 ;; Syntax:  :<prefix> 671 <client> <nick> :is using a secure connection
 ;; Example: :irc.mzima.net 671 haom neonjesus :is using a secure connection
-(define-event rpl-whoissecure (msg params text)
+(define-event rpl-whoissecure (msg buffer params text)
   (destructuring-bind (client nick) params
-    (echo (buffer msg) nick text)))
+    (echo buffer nick text)))
 
 ;; PART-ing a nil channel
 ;; :orwell.freenode.net 403 haom NIL :No such channel
