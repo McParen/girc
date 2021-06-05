@@ -63,22 +63,31 @@ Args is a string containing all arguments given to the command."
 
 ;; /buffer new
 ;; /buffer list
+
 (define-command buffer (args)
-  (cond ((string-equal args "new")
-         (push (make-instance 'buffer) *buffers*))
-        ((string-equal args "list")
-         (display t "~A" *buffers*))))
+  (alexandria:switch (args :test #'string=)
+    ("new"
+     (push (make-instance 'buffer) *buffers*))
+    ("list"
+     (dolist (b *buffers*)
+       (if (buffer-connection b)
+           (display t "~A~%" (connection-name (buffer-connection b)))
+           (echo t "NIL"))))))
 
 ;; /server add <name> <nick> <host>
 ;; /server add freenode haom irc.freenode.net
+;; /server list
+
 (define-command server (args)
-  (cond ((string-equal (ntharg 0 args) "add")
-         (push (make-instance 'connection :name (ntharg 1 args) :nickname (ntharg 2 args) :hostname (ntharg 3 args))
-               *connections*))
-        ((string-equal (ntharg 0 args) "list")
-         (when *connections*
+  (let ((cmd (ntharg 0 args)))
+    (alexandria:switch (cmd :test #'string=)
+      ("add"
+       (push (make-instance 'connection :name (ntharg 1 args) :nickname (ntharg 2 args) :hostname (ntharg 3 args))
+             *connections*))
+      ("list"
+       (when *connections*
            (loop for con in *connections* do
-             (display t "~A ~A ~A" (connection-name con) (connection-hostname con) (connection-nickname con)))))))
+             (display t "~A ~A ~A" (connection-name con) (connection-hostname con) (connection-nickname con))))))))
 
 ;; /connect <name>
 (define-command connect (args)
@@ -106,13 +115,15 @@ Args is a string containing all arguments given to the command."
     (display t "~A @ ~A: ~A~%" (connection-nickname (buffer-connection *current-buffer*)) target text)
     (send t :privmsg (list target) text)))
 
+;;; TODO 210604 part command: check channel nil, if nil, part current channel
+
 ;; /part #channel
-;; TODO check channel nil
 (define-command part (args)
   (let ((channel (ntharg 0 args)))
     (send t :part (list channel))))
 
-;; TODO 200522 add args
+;;; TODO 200522 add args
+
 ;; /quit
 (define-command quit (args)
   (send t :quit))

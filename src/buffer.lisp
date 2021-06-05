@@ -49,11 +49,17 @@
 (defun push-to-buffer (string buffer)
   "Push a new line to the buffer.
 
+If the line is longer than the current screen width, break it up.
+
 If buffer is t, the current buffer is used."
   (let ((buffer (if (eq buffer t) *current-buffer* buffer)))
     (with-accessors ((lines buffer-lines) (changedp buffer-changed-p)) buffer
-      (let* ((height (crt:height (output-window *ui*))))
-        (push string lines)
+      (let* ((height (crt:height (output-window *ui*)))
+             (width (crt:width (output-window *ui*))))
+        (if (> (length string) width)            
+            (dolist (line (crt:split-lines (crt:wrap-string string width)))
+              (push line lines))
+            (push string lines))
         ;; if buffer is longer than some limit delete old lines
         ;; currently the limit is the max window height
         ;; we dont yet account for lines that are longer than one window line
@@ -104,8 +110,8 @@ or the display function can be used which allows format controls."
       (loop for i from 0
             for line in (reverse lines) do
               (crt:move win i 0)
+              ;; if the line is longer than width, display only width chars.
               (if (> (length line) (crt:width win))
-                  ;; if the line is longer than width, display only width chars.
                   (princ (subseq line 0 (crt:width win)) win)
                   (princ line win)))
       ;; causes flicker
