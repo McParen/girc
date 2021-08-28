@@ -121,9 +121,13 @@ For now, the raw irc message will simply be displayed in the output window."
 
 (bind-event t 'default-event-handler)
 
+;; Syntax:
+;; :<prefix> JOIN :<channel>
+;; :<prefix> JOIN <channel>
 ;; Comment: The target channel is on some servers param 0, sometimes the text.
-;; Example: :haom!~myuser@78-2-83-238.adsl.net.com.com JOIN :#testus
-;; Example: :haom!~myuser@78-2-83-238.adsl.net.com.com JOIN #testus
+;; Examples:
+;; :haom!~myuser@78-2-83-238.adsl.net.com.com JOIN :#testus
+;; :haom!~myuser@78-2-83-238.adsl.net.com.com JOIN #testus
 (define-event join (msg buffer prefix-nick command params text)
   (let ((channel (cond (text text)
                        (params (nth 0 params)))))
@@ -137,9 +141,18 @@ For now, the raw irc message will simply be displayed in the output window."
 (define-event notice (msg buffer command text)
   (display buffer "~A: ~A" command text))
 
-(define-event part (msg buffer prefix-nick command params)
-  (destructuring-bind (target) params
-    (echo buffer command prefix-nick target)))
+;; Syntax: :<prefix> PART <channel> :<reason>
+;; Syntax: :<prefix> PART :<chan>
+;; Examples:
+;; :haom!~myuser@freenode-4bt.6qi.vs9qrf.IP PART :#linux
+;; :another!~another@freenode-bn0om7.k2om.k054.fah2pm.IP PART #linux :"So we must part ways"
+(define-event part (msg buffer prefix-nick command params text)
+  (if params
+      (destructuring-bind (target) params
+        (if text
+            (echo buffer command prefix-nick target text)
+            (echo buffer command prefix-nick target)))
+      (echo buffer command prefix-nick text)))
 
 (define-event quit (msg buffer prefix-nick command text)
   (echo buffer command prefix-nick text))
@@ -160,7 +173,10 @@ For now, the raw irc message will simply be displayed in the output window."
 ;; :haom!~myuser@93-142-151-146.adsl.net.com.de PRIVMSG haom :hello there
 (define-event privmsg (msg buffer prefix-nick params text)
   (destructuring-bind (target) params
-    (display buffer "~A @ ~A: ~A" prefix-nick target text)))
+    ;; have different handlers if the msg target is a channel or nick
+    (if (channelp target)
+        (display buffer "<~A> ~A" prefix-nick text)
+        (display buffer "~A: ~A" prefix-nick text))))
 
 ;; :kornbluth.freenode.net 372 haom :- Thank you for using freenode!
 ;; :kornbluth.freenode.net 376 haom :End of /MOTD command.
@@ -237,12 +253,24 @@ For now, the raw irc message will simply be displayed in the output window."
 ;; Number:   333
 ;; Event:    RPL_TOPICWHOTIME
 ;; Reply to: JOIN, TOPIC
-;; Syntax:   :<prefix> 333 <client> <channel> <nick> <setat>
-;; Example:  :kornbluth.freenode.net 333 McParen #ubuntu el!~el@ubuntu/member/el 1595009905
-;; Example:  :karatkievich.freenode.net 333 McParen #kde Mamarok 1603383031
-(define-event rpl-topicwhotime (msg buffer params)
-  (destructuring-bind (client channel nick setat) params
-    (display buffer "TOPIC set by ~A on ~A." nick setat)))
+;;
+;; Syntax1:  :<prefix> 333 <client> <channel> <nick> <setat>
+;; Examples:
+;; :kornbluth.freenode.net 333 McParen #ubuntu el!~el@ubuntu/member/el 1595009905
+;; :karatkievich.freenode.net 333 McParen #kde Mamarok 1603383031
+;;
+;; Syntax2:  :<prefix> 333 <client> <channel> <nick> :<setat>
+;; Examples:
+;; :lux.freenode.net 333 haom #linux oxek :1623786160
+(define-event rpl-topicwhotime (msg buffer params text)
+  (cond ((= (length params) 4)
+         (destructuring-bind (client channel nick setat) params
+           (display buffer "TOPIC set by ~A on ~A." nick setat)))
+        ((= (length params) 3)
+         (destructuring-bind (client channel nick) params
+           (display buffer "TOPIC set by ~A on ~A." nick text)))
+        (t
+         (echo (buffer msg) (rawmsg msg)))))
 
 ;;; WHOIS
 
@@ -260,7 +288,7 @@ For now, the raw irc message will simply be displayed in the output window."
 ;; Number:  311
 ;; Event:   RPL_WHOISUSER
 ;; Syntax:  :<prefix> 311 <nick> <target nick> <user> <host> * :<real name>
-;; Comment: Reply to WHOIS - Information about the user 
+;; Comment: Reply to WHOIS - Information about the user
 ;; Example: :calvino.freenode.net 311 arrk23 arrk23 ~arrakis24 hostname-ip.net * :McLachlan
 (define-event rpl-whoisuser (msg buffer params text)
   (destructuring-bind (nick target user host star) params
@@ -336,9 +364,3 @@ For now, the raw irc message will simply be displayed in the output window."
 (define-event rpl-whoissecure (msg buffer params text)
   (destructuring-bind (client nick) params
     (echo buffer nick text)))
-
-;; PART-ing a nil channel
-;; :orwell.freenode.net 403 haom NIL :No such channel
-
-;; msg to a non-existing channel
-;; :orwell.freenode.net 401 haom #test22222 :No such nick/channel

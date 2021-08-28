@@ -8,7 +8,7 @@
     :documentation "Pointer to the current connection associated with the buffer. Added when /connect is called.")
 
    (target
-    :initarg       :connection
+    :initarg       :target
     :initform      nil
     :accessor      buffer-target
     :type          (or null string)

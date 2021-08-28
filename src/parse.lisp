@@ -183,10 +183,10 @@
 (defun prefix-host (irc-msg)
   (nth 2 (get-nick-user-host (prefix irc-msg))))
 
-;; Examples: (user-input-parse "/hello there dear john") => ("hello" "there dear john")
-;;           (user-input-parse "hello there dear john") => ("" "hello there dear john")
-;;           (user-input-parse "/hello") => ("hello" "")
-;; (parse-user-input "/hello there dear john") => ("Hello" "there dear john")"
+;; Examples:
+;; (parse-user-input "/hello there dear john") => ("hello" . "there dear john")
+;; (parse-user-input "hello there dear john") => (NIL . "hello there dear john")
+;; (parse-user-input "/hello") => ("hello")
 (defun parse-user-input (str)
   "Split a user input string into a command, if the line beginns with /, and a string of arguments.
 
@@ -292,3 +292,9 @@ Called from handle-user-command."
 ;; and return a string with all those variables replaced with values
 
 ;; "a b ${nickname} d e" => "a b hello d e"
+
+(defun channelp (str)
+  "Return t if str is a valid channel name."
+  (and (not (= (length str) 0))
+       (>= (length str) 2)
+       (char= #\# (char str 0))))
