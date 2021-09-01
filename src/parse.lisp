@@ -232,6 +232,12 @@ Called from handle-user-command."
 (defun ntharg (n args)
   (string-nth n args))
 
+;; (lenarg "a b c") => 3
+;; (lenarg "") => 0
+(defun arglen (args)
+  "Return the length of the arguments list (= number of passed arguments)."
+  (length (split-sequence:split-sequence #\space args :remove-empty-subseqs t)))
+
 ;; Example: (string-nthcdr 2 "a b c d e f") => "c d e f"
 (defun string-nthcdr (n str)
   "Take a string, return the rest that would be returned by calling string-cdr n times."

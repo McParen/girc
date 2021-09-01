@@ -8,7 +8,7 @@
     :initform      nil
     :accessor      connection-name
     :type          (or null string)
-    :documentation "Name by which to refer to the connection.")
+    :documentation "Name by which to refer to the connection, for example the name of the IRC network.")
 
    (hostname
     :initarg       :hostname

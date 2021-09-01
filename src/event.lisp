@@ -131,6 +131,13 @@ For now, the raw irc message will simply be displayed in the output window."
 (define-event join (msg buffer prefix-nick command params text)
   (let ((channel (cond (text text)
                        (params (nth 0 params)))))
+
+    ;; when your nick joins the channel, make the channel the target of the buffer.
+    ;;(when (string= prefix-nick
+    ;;               (connection-nickname (buffer-connection *current-buffer*)))
+    ;;  (setf (buffer-target *current-buffer*) channel)
+    ;;  (update-status))
+
     (echo buffer command prefix-nick channel)))
 
 ;; Syntax: :<prefix> NOTICE <target> :<text>
@@ -147,12 +154,20 @@ For now, the raw irc message will simply be displayed in the output window."
 ;; :haom!~myuser@freenode-4bt.6qi.vs9qrf.IP PART :#linux
 ;; :another!~another@freenode-bn0om7.k2om.k054.fah2pm.IP PART #linux :"So we must part ways"
 (define-event part (msg buffer prefix-nick command params text)
-  (if params
-      (destructuring-bind (target) params
-        (if text
-            (echo buffer command prefix-nick target text)
-            (echo buffer command prefix-nick target)))
-      (echo buffer command prefix-nick text)))
+  (let ((channel (if params (nth 0 params) text))
+        (reason (if (and params text) text nil)))
+
+    ;; when your nick parts the channel and the channel is the current buffers target, remove it from the target.
+    ;;(when (and (string= prefix-nick
+    ;;                    (connection-nickname (buffer-connection *current-buffer*)))
+    ;;           (string= channel
+    ;;                    (buffer-target *current-buffer*)))
+    ;;  (setf (buffer-target *current-buffer*) nil)
+    ;;  (update-status))
+
+    (if reason
+        (echo buffer command prefix-nick channel reason)
+        (echo buffer command prefix-nick channel))))
 
 (define-event quit (msg buffer prefix-nick command text)
   (echo buffer command prefix-nick text))
@@ -171,12 +186,13 @@ For now, the raw irc message will simply be displayed in the output window."
 ;; :leo!~leo@host-205-241-38-153.acelerate.net PRIVMSG #ubuntu :im a newbie
 ;; :moah!~gnu@dslb.host-ip.net PRIVMSG arrk13 :test back
 ;; :haom!~myuser@93-142-151-146.adsl.net.com.de PRIVMSG haom :hello there
-(define-event privmsg (msg buffer prefix-nick params text)
+(define-event privmsg (msg prefix-nick params connection text)
   (destructuring-bind (target) params
-    ;; have different handlers if the msg target is a channel or nick
-    (if (channelp target)
-        (display buffer "<~A> ~A" prefix-nick text)
-        (display buffer "~A: ~A" prefix-nick text))))
+    (let ((buffer (find-buffer connection target)))
+      ;; have different handlers if the msg target is a channel or nick
+      (if (channelp target)
+          (display buffer "<~A> ~A" prefix-nick text)
+          (display buffer "*~A* ~A" prefix-nick text)))))
 
 ;; :kornbluth.freenode.net 372 haom :- Thank you for using freenode!
 ;; :kornbluth.freenode.net 376 haom :End of /MOTD command.

@@ -61,18 +61,58 @@ Args is a string containing all arguments given to the command."
 ;; send to the current server:
 ;; (send t :command list-of-param-strings text-string)
 
+(define-command logo (args)
+  (display-logo))
+
 ;; /buffer new
 ;; /buffer list
 
 (define-command buffer (args)
-  (alexandria:switch (args :test #'string=)
-    ("new"
-     (push (make-instance 'buffer) *buffers*))
-    ("list"
-     (dolist (b *buffers*)
-       (if (buffer-connection b)
-           (display t "~A~%" (connection-name (buffer-connection b)))
-           (echo t "NIL"))))))
+  (let ((cmd (ntharg 0 args)))
+    (alexandria:switch (cmd :test #'string=)
+      ("new"
+       (case (arglen args)
+         (1 (push (make-instance 'buffer) *buffers*))
+         (2 (push (make-instance 'buffer
+                                 :connection (find (ntharg 1 args) *connections* :key #'connection-name :test #'string-equal))
+                  *buffers*))
+         (3 (push (make-instance 'buffer
+                                 :connection (find (ntharg 1 args) *connections* :key #'connection-name :test #'string-equal)
+                                 :target (ntharg 2 args))
+                  *buffers*)))
+       (setf *buffers* (reverse *buffers*)))
+      ("target"
+       (setf (buffer-target *current-buffer*) (ntharg 1 args)))
+      ("connection"
+       (setf (buffer-connection *current-buffer*)
+             (find (ntharg 1 args) *connections* :key #'connection-name :test #'string-equal))))))
+
+(define-command info (args)
+  (case (arglen args)
+    (0 (display-info))
+    (1 (let ((cmd (ntharg 0 args)))
+         (alexandria:switch (cmd :test #'string=)
+           ("handlers"
+            (apply #'echo t (loop for h in *event-handlers* collect (car h))))
+           ("buffers"
+            (echo t "Number" "Connection" "Target")
+            (loop for i from 0 below (length *buffers*)
+                  for b = (nth i *buffers*)
+                  do
+                     (echo t i
+                           (when (buffer-connection b)
+                             (connection-name (buffer-connection b)))
+                           (buffer-target b))))
+           ("servers"
+            (echo t "Network" "Nick" "Host")
+            (when *connections*
+              (dolist (c *connections*)
+                (echo t
+                      (connection-name c)
+                      (connection-nickname c)
+                      (connection-hostname c)))))
+           ("commands"
+            (apply #'echo t (loop for c in *user-commands* collect (car c)))))))))
 
 ;; /server add <name> <nick> <host>
 ;; /server add freenode haom irc.freenode.net
@@ -115,14 +155,10 @@ Args is a string containing all arguments given to the command."
     (display t "~A @ ~A: ~A~%" (connection-nickname (buffer-connection *current-buffer*)) target text)
     (send t :privmsg (list target) text)))
 
-;;; TODO 210604 part command: check channel nil, if nil, part current channel
-
 ;; /part #channel
 (define-command part (args)
   (let ((channel (ntharg 0 args)))
     (send t :part (list channel))))
-
-;;; TODO 200522 add args
 
 ;; /quit
 (define-command quit (args)

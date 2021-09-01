@@ -9,7 +9,7 @@
   (#\soh 'crt::accept)
 
   ;; TODO 201121 use caret notation instead of "soh", etc.
-  
+
    ;; C-x = cancel = CAN = #\can
   (#\can 'crt::cancel)
 
@@ -37,12 +37,12 @@
   ;; as soon as we connect to a server, pass the stream to a background thread
   ;; process-server-input then should just take read messages from the thread queue
   (nil 'handle-server-input)
-  
+
   (#\newline 'handle-user-command)
 
   ;; ^N (14)
   (#\so 'select-next-buffer)
-  
+
   ;; TODO 201122 how to bind irc command directly without having to wrap them in a lambda
   ;; C-w = 23 = #\etb = End of Transmission Block
   ;; sends a quit message to the server. (replied by the server with an error message)
@@ -53,7 +53,8 @@
 ;; after quickloading girc, start the client with (girc:run).
 (defun run ()
   (setq *ui* (make-instance 'user-interface))
-  (display-logo)
+  (update-status)
+  ;; run the main event loop on the input field
   (crt:edit (input-field *ui*))
   (finalize-user-interface *ui*))
 
@@ -62,14 +63,31 @@
   "Build the girc executable."
   (sb-ext:save-lisp-and-die "girc" :toplevel #'girc:run :executable t :compression 9))
 
+(defparameter *girc-logo*
+"           _____  _____    _____ 
+          |_   _||  __ \\  / ____|
+     __ _   | |  | |__) || |     
+    / _` |  | |  |  _  / | |     
+   | (_| | _| |_ | | \\ \\ | |____ 
+    \\__, ||_____||_|  \\_\\ \\_____|
+  |    | |
+  |\\___/ |        A very basic IRC client.
+   \\____/")
+
 (defun display-logo ()
-  (echo t "            _____  _____    _____ ")
-  (echo t "           |_   _||  __ \\  / ____|")
-  (echo t "      __ _   | |  | |__) || |     ")
-  (echo t "     / _` |  | |  |  _  / | |     ")
-  (echo t "    | (_| | _| |_ | | \\ \\ | |____ ")
-  (echo t "     \\__, ||_____||_|  \\_\\ \\_____|")
-  (echo t "   |    | |")
-  (echo t "   |\\___/ |")
-  (echo t "    \\____/")
-  (echo t ""))
+  (loop for i in (split-sequence:split-sequence #\newline *girc-logo* :remove-empty-subseqs t) do
+    (echo t i)))
+
+(defun display-info ()
+  (let* ((box (make-instance 'crt:msgbox
+                             :title "gIRC v0.0.1"
+                             :message *girc-logo*
+                             :message-wrap nil
+                             :dimensions '(15 50)
+                             :center t)))
+    (crt:edit box)
+    (close box))
+
+  ;; if we add the ui to crt:main-stack, the main stack is automatically refreshed when the menu window is closed.
+  (crt:touch (output-window *ui*))
+  (refresh *ui*))

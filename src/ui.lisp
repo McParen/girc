@@ -23,7 +23,7 @@
     :accessor      status-window
     :type          (or null crt:window)
     :documentation "Window for the status line.")
-   
+
    (input-window
     :initarg       :input-window
     :initform      nil
@@ -70,8 +70,8 @@
                                        :window input-window
                                        :style (list :foreground nil :background nil)
                                        :keymap 'girc-input-map
-                                       ;; poll the server and update the display 5 times per second.
-                                       :frame-rate 5))
+                                       ;; poll the server and update the display 10 times per second.
+                                       :frame-rate 10))
     ;; format the status line
     (setf (crt:background status-window) (make-instance 'crt:complex-char :simple-char #\- :attributes '(:reverse)))
     (refresh ui)))
