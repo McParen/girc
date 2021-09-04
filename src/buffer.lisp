@@ -6,14 +6,14 @@
     :initform      nil
     :accessor      buffer-connection
     :type          (or null connection)
-    :documentation "Pointer to the current connection associated with the buffer. Added when /connect is called.")
+    :documentation "Pointer to the connection object associated with the buffer. Set by /connect.")
 
    (target
     :initarg       :target
     :initform      nil
     :accessor      buffer-target
     :type          (or null string)
-    :documentation "Target (nick or channel) of the messages sent and received form the server.")
+    :documentation "Target channel of the messages sent and received form the connection.")
 
    (changedp
     :initform      nil
@@ -70,24 +70,23 @@ If buffer is t, the current buffer is used."
         ;; flag the buffer for redisplay
         (setf changedp t)))))
 
-;; TODO 201218 add the target (channel, nick) as an optional argument
 (defgeneric buffer (obj)
   (:documentation "Return the buffer associated with the object (connection, message)."))
 
 (defmethod buffer ((msg irc-message))
-  "Loop through the list of buffers, return the buffer associated with the connection of the message."
-  (loop for buf in *buffers* do
-    (when (eq (connection msg) (buffer-connection buf))
-      (return buf))))
+  "Loop through the list of buffers, return the buffer associated with the connection of the message.
+
+First try to return a buffer without a specified target, i.e. the main buffer for the connection."
+  (find-buffer (connection msg) nil))
 
 (defun find-buffer (connection target)
-  "Check if there is a buffer associated with a connection and a target nick/chan.
+  "Check if there is a buffer associated with a connection and a target channel.
 
 When there is no connection with that target, return the buffer for the connection."
   (let ((buf1
           (loop for buf in *buffers*
                 when (and (eq connection (buffer-connection buf))
-                          (string= target (buffer-target buf)))
+                          (equal target (buffer-target buf)))
                   return buf)))
     (if buf1
         buf1

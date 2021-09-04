@@ -211,3 +211,7 @@ Bound to nil in girc-input-map."
   (when (buffer-changed-p *current-buffer*)
     (crt:save-excursion (input-window *ui*)
       (display-buffer *current-buffer*))))
+
+(defun find-connection (name)
+  "Return the connection object associated with the given connection name."
+  (find name *connections* :key #'connection-name :test #'string=))

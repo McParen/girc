@@ -70,22 +70,32 @@ Args is a string containing all arguments given to the command."
 (define-command buffer (args)
   (let ((cmd (ntharg 0 args)))
     (alexandria:switch (cmd :test #'string=)
+      ("kill"
+       (if (= 1 (length *buffers*))
+           (echo t "Can't kill the last buffer.")
+           (progn
+             (if (= 0 *current-buffer-number*)
+                 (setf *current-buffer* (nth 1 (reverse *buffers*))
+                       *buffers* (butlast *buffers*))
+                 (setf *current-buffer-number* (1- *current-buffer-number*)
+                       *current-buffer* (nth *current-buffer-number* (reverse *buffers*))
+                       *buffers* (remove (nth (1+ *current-buffer-number*) (reverse *buffers*)) *buffers*)))
+             (setf (buffer-changed-p *current-buffer*) t)
+             (update-status))))
       ("new"
        (case (arglen args)
-         (1 (push (make-instance 'buffer) *buffers*))
-         (2 (push (make-instance 'buffer
-                                 :connection (find (ntharg 1 args) *connections* :key #'connection-name :test #'string-equal))
+         (1 (push (make-instance 'buffer)
                   *buffers*))
-         (3 (push (make-instance 'buffer
-                                 :connection (find (ntharg 1 args) *connections* :key #'connection-name :test #'string-equal)
-                                 :target (ntharg 2 args))
-                  *buffers*)))
-       (setf *buffers* (reverse *buffers*)))
+         (2 (push (make-instance 'buffer :connection (find-connection (ntharg 1 args)))
+                  *buffers*))
+         (3 (push (make-instance 'buffer :connection (find-connection (ntharg 1 args))
+                                         :target (ntharg 2 args))
+                  *buffers*))))
       ("target"
        (setf (buffer-target *current-buffer*) (ntharg 1 args)))
       ("connection"
        (setf (buffer-connection *current-buffer*)
-             (find (ntharg 1 args) *connections* :key #'connection-name :test #'string-equal))))))
+             (find-connection (ntharg 1 args)))))))
 
 (define-command info (args)
   (case (arglen args)
@@ -97,7 +107,7 @@ Args is a string containing all arguments given to the command."
            ("buffers"
             (echo t "Number" "Connection" "Target")
             (loop for i from 0 below (length *buffers*)
-                  for b = (nth i *buffers*)
+                  for b = (nth i (reverse *buffers*))
                   do
                      (echo t i
                            (when (buffer-connection b)
