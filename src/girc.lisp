@@ -38,6 +38,7 @@
   ;; process-server-input then should just take read messages from the thread queue
   (nil 'handle-server-input)
 
+  ;; command.lisp
   (#\newline 'handle-user-command)
 
   ;; ^N (14)

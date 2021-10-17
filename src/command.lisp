@@ -33,8 +33,8 @@ Bound to #\newline in girc-input-map."
                   (funcall (lambda (cmd args)
                              (display t "Undefined command: ~A ~A" cmd args))
                            cmd args)))
-            ;; TODO 200328 the default command should be /say.
-            nil))))
+            ;; if no command was given, send the input to the current buffer target
+            (say args)))))
   ;; if the current buffer has been changed, update the display.
   (when (buffer-changed-p *current-buffer*)
     (crt:save-excursion (input-window *ui*)
@@ -92,7 +92,8 @@ Args is a string containing all arguments given to the command."
                                          :target (ntharg 2 args))
                   *buffers*))))
       ("target"
-       (setf (buffer-target *current-buffer*) (ntharg 1 args)))
+       (setf (buffer-target *current-buffer*) (ntharg 1 args))
+       (update-status))
       ("connection"
        (setf (buffer-connection *current-buffer*)
              (find-connection (ntharg 1 args)))))))
@@ -162,8 +163,22 @@ Args is a string containing all arguments given to the command."
 (define-command msg (args)
   (let ((target (ntharg 0 args)) ; a target can be a nick or a channel
         (text (nthargs 1 args)))
-    (display t "~A @ ~A: ~A~%" (connection-nickname (buffer-connection *current-buffer*)) target text)
+    (display t "~A @ ~A: ~A" (connection-nickname (buffer-connection *current-buffer*)) target text)
     (send t :privmsg (list target) text)))
+
+(defun say (text)
+  (if (buffer-connection *current-buffer*)
+      (if (connectedp (buffer-connection *current-buffer*))
+          (if (buffer-target *current-buffer*)
+              (progn
+                (display t "<~A> ~A" (connection-nickname (buffer-connection *current-buffer*)) text)
+                (send t :privmsg (list (buffer-target *current-buffer*)) text))
+              (display t "-!- Current buffer not associated with a target."))
+          (display t "-!- ~A not connected." (connection-name (buffer-connection *current-buffer*))))
+      (display t "-!- Current buffer not associated with a connection.")))
+
+(define-command say (args)
+  (say args))
 
 ;; /part #channel
 (define-command part (args)
@@ -176,7 +191,7 @@ Args is a string containing all arguments given to the command."
 
 ;; /raw args*
 (define-command raw (args)
-  (display t "/raw ~A~%" args)
+  (display t "/raw ~A" args)
   (send-raw t args))
 
 ;; WHOIS nick nick additionally return seconds idle signon time
