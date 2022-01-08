@@ -21,6 +21,12 @@
     :type          boolean
     :documentation "Flag to denote that the buffer was changed an can be redisplayed.")
 
+   (max-length
+    :initform      100
+    :accessor      buffer-max-length
+    :type          integer
+    :documentation "Number of lines to store in the display buffer.")
+
    ;; should this be a list, a queue or an array
    ;; a list should be the easiest to implement, but maybe too inefficient if we have a very long buffer
    ;; a list should be ok if the length is 50 lines.
@@ -49,26 +55,16 @@
   (update-status))
 
 (defun push-to-buffer (string buffer)
-  "Push a new line to the buffer.
-
-If the line is longer than the current screen width, break it up.
+  "Push a new line to the output buffer, to be displayed by display-buffer.
 
 If buffer is t, the current buffer is used."
   (let ((buffer (if (eq buffer t) *current-buffer* buffer)))
-    (with-accessors ((lines buffer-lines) (changedp buffer-changed-p)) buffer
-      (let* ((height (crt:height (output-window *ui*)))
-             (width (crt:width (output-window *ui*))))
-        (if (> (length string) width)
-            (dolist (line (crt:split-lines (crt:wrap-string string width)))
-              (push line lines))
-            (push string lines))
-        ;; if buffer is longer than some limit delete old lines
-        ;; currently the limit is the max window height
-        ;; we dont yet account for lines that are longer than one window line
-        (when (> (length lines) height)
-          (setf lines (subseq lines 0 height)))
-        ;; flag the buffer for redisplay
-        (setf changedp t)))))
+    (with-accessors ((lines buffer-lines) (changedp buffer-changed-p) (max buffer-max-length)) buffer
+      (push string lines)
+      (when (> (length lines) max)
+        (setf lines (subseq lines 0 max)))
+      ;; flag the buffer for redisplay
+      (setf changedp t))))
 
 (defgeneric buffer (obj)
   (:documentation "Return the buffer associated with the object (connection, message)."))
@@ -120,16 +116,29 @@ or the display function can be used which allows format controls."
 (defun display-buffer (buffer)
   "Display at most height lines to the output window."
   (with-accessors ((lines buffer-lines) (changedp buffer-changed-p)) buffer
-    (let ((win (output-window *ui*)))
+    (let* ((win (output-window *ui*))
+           (h (crt:height win))
+           (w (crt:width win))
+           ;; lists of strings of max width w to be displayed in the window
+           (scrlines ())
+           ;; number of lines to display
+           (n 0))
+      (dolist (ln lines)
+        (dolist (item (if (> (length ln) w)
+                          ;; if a buffer line is wider than the window,
+                          ;; split it into mutiple lines
+                          (reverse (crt:split-lines (crt:wrap-string ln w)))
+                          (list ln)))
+          ;; lines are displayed in the reversed order, oldest first, newest last
+          (push item scrlines)
+          (incf n)
+          (when (= n h) (go end)))
+        end)
       (crt:clear win)
       (crt:move win 0 0)
-      (loop for i from 0
-            for line in (reverse lines) do
-              (crt:move win i 0)
-              ;; if the line is longer than width, display only width chars.
-              (if (> (length line) (crt:width win))
-                  (princ (subseq line 0 (crt:width win)) win)
-                  (princ line win)))
+      (dolist (ln scrlines)
+        (fresh-line win)
+        (princ ln win))
       ;; causes flicker
       (crt:refresh win))
     ;; after the changes have been displayed, set the flag to nil
@@ -154,7 +163,7 @@ or the display function can be used which allows format controls."
         (crt:move swin 0 (- (crt:width swin) 20))
         (if (buffer-target *current-buffer*)
             (format swin "[~A:~A]" *current-buffer-number* (buffer-target *current-buffer*))
-            (format swin "[~A:~A]" *current-buffer-number* :channel))
+            (format swin "[~A:~A]" *current-buffer-number* :target))
 
         ;; after we refresh the window, return the cursor to the input line, use save-excursion in echo?
         (crt:refresh swin)))))
