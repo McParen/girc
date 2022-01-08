@@ -14,7 +14,7 @@
   (#\can 'crt::cancel)
 
   ;; C-r = reset = DC2 = #\dc2
-  (#\dc2 'crt::reset-field)
+  (#\dc2 'crt::reset)
 
   (:left 'crt::move-previous-char)
   (:right 'crt::move-next-char)
@@ -25,8 +25,7 @@
 
   (:dc 'crt::delete-next-char)
 
-  (:ic (lambda (field event &rest args)
-         (declare (ignore event args))
+  (:ic (lambda (field)
          (crt:toggle-insert-mode field)))
 
   ;; TODO 201122 only graphic chars should be added, what about :up?
@@ -47,8 +46,7 @@
   ;; TODO 201122 how to bind irc command directly without having to wrap them in a lambda
   ;; C-w = 23 = #\etb = End of Transmission Block
   ;; sends a quit message to the server. (replied by the server with an error message)
-  (#\etb (lambda (field event &rest args)
-           (declare (ignore field event args))
+  (#\etb (lambda ()
            (send t :quit))))
 
 ;; after quickloading girc, start the client with (girc:run).

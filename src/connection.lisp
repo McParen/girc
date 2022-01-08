@@ -184,11 +184,10 @@ If the read length including CRLF exceeds that limit, nil is returned."
     (when (eq con (buffer-connection buf))
       (return buf))))
 
-(defun handle-server-input (field event)
+(defun handle-server-input ()
   "Handle the nil event during a non-blocking edit of the input field.
 
 Bound to nil in girc-input-map."
-  (declare (ignore field event))
   ;; do not process if a connection has not been established first.
   (when *connections*
     (loop for con in *connections* do

@@ -15,7 +15,7 @@ Commands are added to this alist by define-command or bind-command.")
         (cdr cmd-pair)
         nil)))
 
-(defun handle-user-command (field event &rest args1)
+(defun handle-user-command (field)
   "Parse the content of the input line, call the function associated with the user command.
 
 At the moment, no default command is called if the first input token is not a /command.
@@ -23,7 +23,7 @@ At the moment, no default command is called if the first input token is not a /c
 Bound to #\newline in girc-input-map."
   (let ((input-string (crt:value field)))
     (when input-string
-      (apply #'crt:reset-field field event args1)
+      (crt:reset field)
       (destructuring-bind (cmd . args) (parse-user-input input-string)
         (if cmd
             (let ((fun (get-command-handler cmd))) ; see command.lisp
@@ -64,9 +64,6 @@ Args is a string containing all arguments given to the command."
 (define-command logo (args)
   (display-logo))
 
-;; /buffer new
-;; /buffer list
-
 (define-command buffer (args)
   (let ((cmd (ntharg 0 args)))
     (alexandria:switch (cmd :test #'string=)
@@ -92,9 +89,11 @@ Args is a string containing all arguments given to the command."
                                          :target (ntharg 2 args))
                   *buffers*))))
       ("target"
+       ;; if no target was given, the target is set back to nil.
        (setf (buffer-target *current-buffer*) (ntharg 1 args))
        (update-status))
       ("connection"
+       ;; associate a buffer with an existing connection without connecting to it
        (setf (buffer-connection *current-buffer*)
              (find-connection (ntharg 1 args)))))))
 
