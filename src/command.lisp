@@ -64,6 +64,14 @@ Args is a string containing all arguments given to the command."
 (define-command logo (args)
   (display-logo))
 
+;; /buffer kill
+;; /buffer list
+;; /buffer new
+;; /buffer new <connection>
+;; /buffer new <connection> <target>
+;; /buffer target
+;; /buffer target <channel>
+;; /buffer connection <connection>
 (define-command buffer (args)
   (let ((cmd (ntharg 0 args)))
     (alexandria:switch (cmd :test #'string=)
@@ -79,6 +87,15 @@ Args is a string containing all arguments given to the command."
                        *buffers* (remove (nth (1+ *current-buffer-number*) (reverse *buffers*)) *buffers*)))
              (setf (buffer-changed-p *current-buffer*) t)
              (update-status))))
+      ("list"
+       (echo t "Number" "Connection" "Target")
+       (loop for i from 0 below (length *buffers*)
+             for b = (nth i (reverse *buffers*))
+             do
+                (echo t i
+                      (when (buffer-connection b)
+                        (connection-name (buffer-connection b)))
+                      (buffer-target b))))
       ("new"
        (case (arglen args)
          (1 (push (make-instance 'buffer)
@@ -97,14 +114,19 @@ Args is a string containing all arguments given to the command."
        (setf (buffer-connection *current-buffer*)
              (find-connection (ntharg 1 args)))))))
 
+;; /info
+;; /info handler
+;; /info buffer  = /buffer list
+;; /info server  = /server list
+;; /info command
 (define-command info (args)
   (case (arglen args)
     (0 (display-info))
     (1 (let ((cmd (ntharg 0 args)))
          (alexandria:switch (cmd :test #'string=)
-           ("handlers"
+           ("handler"
             (apply #'echo t (loop for h in *event-handlers* collect (car h))))
-           ("buffers"
+           ("buffer"
             (echo t "Number" "Connection" "Target")
             (loop for i from 0 below (length *buffers*)
                   for b = (nth i (reverse *buffers*))
@@ -113,7 +135,7 @@ Args is a string containing all arguments given to the command."
                            (when (buffer-connection b)
                              (connection-name (buffer-connection b)))
                            (buffer-target b))))
-           ("servers"
+           ("server"
             (echo t "Network" "Nick" "Host")
             (when *connections*
               (dolist (c *connections*)
@@ -121,13 +143,12 @@ Args is a string containing all arguments given to the command."
                       (connection-name c)
                       (connection-nickname c)
                       (connection-hostname c)))))
-           ("commands"
+           ("command"
             (apply #'echo t (loop for c in *user-commands* collect (car c)))))))))
 
 ;; /server add <name> <nick> <host>
 ;; /server add freenode haom irc.freenode.net
 ;; /server list
-
 (define-command server (args)
   (let ((cmd (ntharg 0 args)))
     (alexandria:switch (cmd :test #'string=)
@@ -135,9 +156,13 @@ Args is a string containing all arguments given to the command."
        (push (make-instance 'connection :name (ntharg 1 args) :nickname (ntharg 2 args) :hostname (ntharg 3 args))
              *connections*))
       ("list"
+       (echo t "Network" "Nick" "Host")
        (when *connections*
-           (loop for con in *connections* do
-             (display t "~A ~A ~A" (connection-name con) (connection-hostname con) (connection-nickname con))))))))
+         (dolist (c *connections*)
+           (echo t
+                 (connection-name c)
+                 (connection-nickname c)
+                 (connection-hostname c))))))))
 
 ;; /connect <name>
 (define-command connect (args)
