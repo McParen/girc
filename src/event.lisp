@@ -173,8 +173,9 @@ For now, the raw irc message will simply be displayed in the output window."
   (echo buffer command prefix-nick text))
 
 (define-event ping (msg buffer rawmsg connection text)
-  (echo buffer rawmsg)
-  (display buffer "PONG :~A" text)
+  (when *show-server-ping*
+    (echo buffer rawmsg)
+    (display buffer "PONG :~A" text))
   ;; return a PONG to the server which sent the PING.
   (pong connection text))
 

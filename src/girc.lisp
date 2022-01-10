@@ -49,13 +49,27 @@
   (#\etb (lambda ()
            (send t :quit))))
 
+(defparameter *show-server-ping* nil
+  "Set to t to show the server PING event and the PONG response.")
+
+(defun load-init-file ()
+  (let ((init (merge-pathnames (user-homedir-pathname) ".gircrc")))
+    (when (probe-file init)
+      (let ((*package* (find-package :de.anvi.girc)))
+        (load init)))))
+
 ;; after quickloading girc, start the client with (girc:run).
 (defun run ()
-  (setq *ui* (make-instance 'user-interface))
-  (update-status)
-  ;; run the main event loop on the input field
-  (crt:edit (input-field *ui*))
-  (finalize-user-interface *ui*))
+  (load-init-file)
+  (let ((*debugger-hook* #'(lambda (c h)
+                             (declare (ignore h))
+                             (finalize-user-interface *ui*)
+                             (print c))))
+    (setq *ui* (make-instance 'user-interface))
+    (update-status)
+    ;; run the main event loop on the input field
+    (crt:edit (input-field *ui*))
+    (finalize-user-interface *ui*)))
 
 ;; omitting executable t produces a core which has to be run with sbcl --core
 (defun build ()
