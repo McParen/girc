@@ -40,7 +40,6 @@ Bound to #\newline in girc-input-map."
     (crt:save-excursion (input-window *ui*)
       (display-buffer *current-buffer*))))
 
-;; TODO 200328 add a named block like in a defun
 (defmacro define-command (command (args) &body body)
   "Add a handler for a user command (given by a symbol).
 
@@ -168,10 +167,12 @@ Args is a string containing all arguments given to the command."
 (define-command connect (args)
   (let* ((name (ntharg 0 args))
          (con (find name *connections* :key #'connection-name :test #'string-equal)))
-    (connect con)
-    ;; associate the current buffer with the new connection
-    (setf (buffer-connection *current-buffer*) con)
-    (update-status)))
+    (if con
+        (progn (connect con)
+               ;; associate the current buffer with the new connection
+               (setf (buffer-connection *current-buffer*) con)
+               (update-status))
+        (display t "-!- Connection ~A not found." name))))
 
 ;; /exit
 (define-command exit (args)
