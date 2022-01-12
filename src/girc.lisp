@@ -49,9 +49,6 @@
   (#\etb (lambda ()
            (send t :quit))))
 
-(defparameter *show-server-ping* nil
-  "Set to t to show the server PING event and the PONG response.")
-
 (defun load-init-file ()
   (let ((init (merge-pathnames (user-homedir-pathname) ".gircrc")))
     (when (probe-file init)
@@ -76,18 +73,8 @@
   "Build the girc executable."
   (sb-ext:save-lisp-and-die "girc" :toplevel #'girc:run :executable t :compression 9))
 
-(defparameter *girc-logo*
-"           _____  _____    _____ 
-          |_   _||  __ \\  / ____|
-     __ _   | |  | |__) || |     
-    / _` |  | |  |  _  / | |     
-   | (_| | _| |_ | | \\ \\ | |____ 
-    \\__, ||_____||_|  \\_\\ \\_____|
-  |    | |
-  |\\___/ |        A very basic IRC client.
-   \\____/")
-
 (defun display-logo ()
+  "Display the ASCII logo line by line."
   (loop for i in (split-sequence:split-sequence #\newline *girc-logo* :remove-empty-subseqs t) do
     (echo t i)))
 

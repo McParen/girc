@@ -11,6 +11,7 @@
   :components
 
   ((:file "package")
+   (:file "global")
    (:file "parse")
    (:file "ui")
    (:file "buffer")
