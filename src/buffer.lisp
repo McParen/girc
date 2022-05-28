@@ -79,11 +79,10 @@ First try to return a buffer without a specified target, i.e. the main buffer fo
   "Check if there is a buffer associated with a connection and a target channel.
 
 When there is no connection with that target, return the buffer for the connection."
-  (let ((buf1
-          (loop for buf in *buffers*
-                when (and (eq connection (buffer-connection buf))
-                          (equal target (buffer-target buf)))
-                  return buf)))
+  (let ((buf1 (loop for buf in *buffers*
+                    when (and (eq connection (buffer-connection buf))
+                              (equal target (buffer-target buf)))
+                      return buf)))
     (if buf1
         buf1
         (loop for buf in *buffers*

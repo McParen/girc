@@ -128,7 +128,7 @@ For now, the raw irc message will simply be displayed in the output window."
 ;; Examples:
 ;; :haom!~myuser@78-2-83-238.adsl.net.com.com JOIN :#testus
 ;; :haom!~myuser@78-2-83-238.adsl.net.com.com JOIN #testus
-(define-event join (msg buffer prefix-nick command params text)
+(define-event join (msg connection prefix-nick command params text)
   (let ((channel (cond (text text)
                        (params (nth 0 params)))))
 
@@ -137,8 +137,8 @@ For now, the raw irc message will simply be displayed in the output window."
     ;;               (connection-nickname (buffer-connection *current-buffer*)))
     ;;  (setf (buffer-target *current-buffer*) channel)
     ;;  (update-status))
-
-    (echo buffer command prefix-nick channel)))
+    (let ((buffer (find-buffer connection channel)))
+      (echo buffer command prefix-nick channel))))
 
 ;; Syntax: :<prefix> NOTICE <target> :<text>
 ;; Examples:
@@ -263,9 +263,10 @@ For now, the raw irc message will simply be displayed in the output window."
 ;; Reply to: JOIN, TOPIC
 ;; Syntax:   :<prefix> 332 <client> <channel> :<topic>
 ;; Example:  :kornbluth.freenode.net 332 McParen #ubuntu :Official Ubuntu Support Channel
-(define-event rpl-topic (msg buffer params text)
+(define-event rpl-topic (msg connection params text)
   (destructuring-bind (client channel) params
-    (display buffer "TOPIC for ~A: ~A" channel text)))
+    (let ((buffer (find-buffer connection channel)))
+      (display buffer "TOPIC for ~A: ~A" channel text))))
 
 ;; Number:   333
 ;; Event:    RPL_TOPICWHOTIME
@@ -279,13 +280,15 @@ For now, the raw irc message will simply be displayed in the output window."
 ;; Syntax2:  :<prefix> 333 <client> <channel> <nick> :<setat>
 ;; Examples:
 ;; :lux.freenode.net 333 haom #linux oxek :1623786160
-(define-event rpl-topicwhotime (msg buffer params text)
+(define-event rpl-topicwhotime (msg connection params text)
   (cond ((= (length params) 4)
          (destructuring-bind (client channel nick setat) params
-           (display buffer "TOPIC set by ~A on ~A." nick setat)))
+           (let ((buffer (find-buffer connection channel)))
+             (display buffer "TOPIC set by ~A on ~A." nick setat))))
         ((= (length params) 3)
          (destructuring-bind (client channel nick) params
-           (display buffer "TOPIC set by ~A on ~A." nick text)))
+           (let ((buffer (find-buffer connection channel)))
+             (display buffer "TOPIC set by ~A on ~A." nick text))))
         (t
          (echo (buffer msg) (rawmsg msg)))))
 
