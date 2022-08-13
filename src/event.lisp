@@ -153,9 +153,11 @@ For now, the raw irc message will simply be displayed in the output window."
 ;; Examples:
 ;; :haom!~myuser@freenode-4bt.6qi.vs9qrf.IP PART :#linux
 ;; :another!~another@freenode-bn0om7.k2om.k054.fah2pm.IP PART #linux :"So we must part ways"
-(define-event part (msg buffer prefix-nick command params text)
-  (let ((channel (if params (nth 0 params) text))
-        (reason (if (and params text) text nil)))
+(define-event part (msg connection prefix-nick command params text)
+  (let* ((channel (if params (nth 0 params) text))
+         (reason (if (and params text) text nil))
+         ;; if there is a buffer for the channel, send part to that buffer
+         (buffer (find-buffer connection channel)))
 
     ;; when your nick parts the channel and the channel is the current buffers target, remove it from the target.
     ;;(when (and (string= prefix-nick

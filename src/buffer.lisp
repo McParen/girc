@@ -85,8 +85,10 @@ When there is no connection with that target, return the buffer for the connecti
                       return buf)))
     (if buf1
         buf1
+        ;; if buf for the target was not found, return the buffer for target nil
         (loop for buf in *buffers*
-              when (eq connection (buffer-connection buf))
+              when (and (eq connection (buffer-connection buf))
+                        (eq (buffer-target buf) nil))
                 return buf))))
 
 (defun display (buffer template &rest args)
@@ -151,18 +153,22 @@ or the display function can be used which allows format controls."
       ;; put the cursor back to the input window after updating the status window.
       (crt:save-excursion (input-window *ui*)
         (crt:clear swin)
-
         (crt:move swin 0 2)
-        ;; the accessors dont work without a connection
-        (if (buffer-connection *current-buffer*)
-            (when (and nick name)
-              (format swin "[~A] [~A]" name nick))
-            (format swin "[~A] [~A]" :network :nick))
-
-        (crt:move swin 0 (- (crt:width swin) 20))
-        (if (buffer-target *current-buffer*)
-            (format swin "[~A:~A]" *current-buffer-number* (buffer-target *current-buffer*))
-            (format swin "[~A:~A]" *current-buffer-number* :target))
+        (format swin
+                (with-output-to-string (str)
+                  ;; the accessors dont work without a connection
+                  (if (buffer-connection *current-buffer*)
+                      (when (and nick name)
+                        (format str "[~A ()] [~A" nick name))
+                      ;; default placeholders
+                      (format str "[~A ()] [~A" :nick :network))
+                  ;; if the current target is a channel, add it after the network
+                  (if (buffer-target *current-buffer*)
+                      (format str "/~A ()]" (buffer-target *current-buffer*))
+                      (format str "]"))))
+        ;; add the current buffer number at the end of the line
+        (crt:move swin 0 (- (crt:width swin) 6))
+        (format swin "~5@A" (format nil "[~A]" *current-buffer-number*))
 
         ;; after we refresh the window, return the cursor to the input line, use save-excursion in echo?
         (crt:refresh swin)))))
