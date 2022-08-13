@@ -36,7 +36,7 @@ Bound to #\newline in girc-input-map."
             ;; if no command was given, send the input to the current buffer target
             (say args)))))
   ;; if the current buffer has been changed, update the display.
-  (when (buffer-changed-p *current-buffer*)
+  (when (changedp *current-buffer*)
     (crt:save-excursion (input-window *ui*)
       (display-buffer *current-buffer*))))
 
@@ -84,7 +84,7 @@ Args is a string containing all arguments given to the command."
                  (setf *current-buffer-number* (1- *current-buffer-number*)
                        *current-buffer* (nth *current-buffer-number* (reverse *buffers*))
                        *buffers* (remove (nth (1+ *current-buffer-number*) (reverse *buffers*)) *buffers*)))
-             (setf (buffer-changed-p *current-buffer*) t)
+             (setf (changedp *current-buffer*) t)
              (update-status))))
       ("list"
        (echo t "Number" "Connection" "Target")
@@ -92,9 +92,9 @@ Args is a string containing all arguments given to the command."
              for b = (nth i (reverse *buffers*))
              do
                 (echo t i
-                      (when (buffer-connection b)
-                        (connection-name (buffer-connection b)))
-                      (buffer-target b))))
+                      (when (connection b)
+                        (name (connection b)))
+                      (target b))))
       ("new"
        (case (arglen args)
          (1 (push (make-instance 'buffer)
@@ -106,11 +106,11 @@ Args is a string containing all arguments given to the command."
                   *buffers*))))
       ("target"
        ;; if no target was given, the target is set back to nil.
-       (setf (buffer-target *current-buffer*) (ntharg 1 args))
+       (setf (target *current-buffer*) (ntharg 1 args))
        (update-status))
       ("connection"
        ;; associate a buffer with an existing connection without connecting to it
-       (setf (buffer-connection *current-buffer*)
+       (setf (connection *current-buffer*)
              (find-connection (ntharg 1 args)))))))
 
 ;; /info
@@ -131,17 +131,17 @@ Args is a string containing all arguments given to the command."
                   for b = (nth i (reverse *buffers*))
                   do
                      (echo t i
-                           (when (buffer-connection b)
-                             (connection-name (buffer-connection b)))
-                           (buffer-target b))))
+                           (when (connection b)
+                             (name (connection b)))
+                           (target b))))
            ("server"
             (echo t "Network" "Nick" "Host")
             (when *connections*
               (dolist (c *connections*)
                 (echo t
-                      (connection-name c)
-                      (connection-nickname c)
-                      (connection-hostname c)))))
+                      (name c)
+                      (nickname c)
+                      (hostname c)))))
            ("command"
             (apply #'echo t (loop for c in *user-commands* collect (car c)))))))))
 
@@ -159,18 +159,18 @@ Args is a string containing all arguments given to the command."
        (when *connections*
          (dolist (c *connections*)
            (echo t
-                 (connection-name c)
-                 (connection-nickname c)
-                 (connection-hostname c))))))))
+                 (name c)
+                 (nickname c)
+                 (hostname c))))))))
 
 ;; /connect <name>
 (define-command connect (args)
   (let* ((name (ntharg 0 args))
-         (con (find name *connections* :key #'connection-name :test #'string-equal)))
+         (con (find name *connections* :key #'name :test #'string-equal)))
     (if con
         (progn (connect con)
                ;; associate the current buffer with the new connection
-               (setf (buffer-connection *current-buffer*) con)
+               (setf (connection *current-buffer*) con)
                (update-status))
         (display t "-!- Connection ~A not found." name))))
 
@@ -188,18 +188,18 @@ Args is a string containing all arguments given to the command."
 (define-command msg (args)
   (let ((target (ntharg 0 args)) ; a target can be a nick or a channel
         (text (nthargs 1 args)))
-    (display t "~A @ ~A: ~A" (connection-nickname (buffer-connection *current-buffer*)) target text)
+    (display t "~A @ ~A: ~A" (nickname (connection *current-buffer*)) target text)
     (send t :privmsg (list target) text)))
 
 (defun say (text)
-  (if (buffer-connection *current-buffer*)
-      (if (connectedp (buffer-connection *current-buffer*))
-          (if (buffer-target *current-buffer*)
+  (if (connection *current-buffer*)
+      (if (connectedp (connection *current-buffer*))
+          (if (target *current-buffer*)
               (progn
-                (display t "<~A> ~A" (connection-nickname (buffer-connection *current-buffer*)) text)
-                (send t :privmsg (list (buffer-target *current-buffer*)) text))
+                (display t "<~A> ~A" (nickname (connection *current-buffer*)) text)
+                (send t :privmsg (list (target *current-buffer*)) text))
               (display t "-!- Current buffer not associated with a target."))
-          (display t "-!- ~A not connected." (connection-name (buffer-connection *current-buffer*))))
+          (display t "-!- ~A not connected." (name (connection *current-buffer*))))
       (display t "-!- Current buffer not associated with a connection.")))
 
 (define-command say (args)

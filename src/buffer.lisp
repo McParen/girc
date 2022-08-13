@@ -4,26 +4,26 @@
   ((connection
     :initarg       :connection
     :initform      nil
-    :accessor      buffer-connection
+    :accessor      connection
     :type          (or null connection)
     :documentation "Pointer to the connection object associated with the buffer. Set by /connect.")
 
    (target
     :initarg       :target
     :initform      nil
-    :accessor      buffer-target
+    :accessor      target
     :type          (or null string)
     :documentation "Target channel of the messages sent and received form the connection.")
 
    (changedp
     :initform      nil
-    :accessor      buffer-changed-p
+    :accessor      changedp
     :type          boolean
     :documentation "Flag to denote that the buffer was changed an can be redisplayed.")
 
    (max-length
     :initform      100
-    :accessor      buffer-max-length
+    :accessor      max-length
     :type          integer
     :documentation "Number of lines to store in the display buffer.")
 
@@ -32,7 +32,7 @@
    ;; a list should be ok if the length is 50 lines.
    (lines
     :initform      nil
-    :accessor      buffer-lines
+    :accessor      lines
     :type          (or null cons)
     :documentation "List of strings the buffer contains."))
 
@@ -51,7 +51,7 @@
   (setf *current-buffer-number* (mod (1+ *current-buffer-number*) (length *buffers*))
         *current-buffer* (nth *current-buffer-number* (reverse *buffers*))
         ;; flag the next buffer for display
-        (buffer-changed-p *current-buffer*) t)
+        (changedp *current-buffer*) t)
   (update-status))
 
 (defun push-to-buffer (string buffer)
@@ -59,7 +59,7 @@
 
 If buffer is t, the current buffer is used."
   (let ((buffer (if (eq buffer t) *current-buffer* buffer)))
-    (with-accessors ((lines buffer-lines) (changedp buffer-changed-p) (max buffer-max-length)) buffer
+    (with-accessors ((lines lines) (changedp changedp) (max max-length)) buffer
       (push string lines)
       (when (> (length lines) max)
         (setf lines (subseq lines 0 max)))
@@ -80,15 +80,15 @@ First try to return a buffer without a specified target, i.e. the main buffer fo
 
 When there is no connection with that target, return the buffer for the connection."
   (let ((buf1 (loop for buf in *buffers*
-                    when (and (eq connection (buffer-connection buf))
-                              (equal target (buffer-target buf)))
+                    when (and (eq connection (connection buf))
+                              (equal target (target buf)))
                       return buf)))
     (if buf1
         buf1
         ;; if buf for the target was not found, return the buffer for target nil
         (loop for buf in *buffers*
-              when (and (eq connection (buffer-connection buf))
-                        (eq (buffer-target buf) nil))
+              when (and (eq connection (connection buf))
+                        (eq (target buf) nil))
                 return buf))))
 
 (defun display (buffer template &rest args)
@@ -116,7 +116,7 @@ or the display function can be used which allows format controls."
 
 (defun display-buffer (buffer)
   "Display at most height lines to the output window."
-  (with-accessors ((lines buffer-lines) (changedp buffer-changed-p)) buffer
+  (with-accessors ((lines lines) (changedp changedp)) buffer
     (let* ((win (output-window *ui*))
            (h (crt:height win))
            (w (crt:width win))
@@ -149,7 +149,7 @@ or the display function can be used which allows format controls."
 (defun update-status ()
   "Set the status line of the current buffer."
   (with-accessors ((swin status-window)) *ui*
-    (with-accessors ((nick connection-nickname) (name connection-name)) (buffer-connection *current-buffer*)
+    (with-accessors ((nick nickname) (name name)) (connection *current-buffer*)
       ;; put the cursor back to the input window after updating the status window.
       (crt:save-excursion (input-window *ui*)
         (crt:clear swin)
@@ -157,14 +157,14 @@ or the display function can be used which allows format controls."
         (format swin
                 (with-output-to-string (str)
                   ;; the accessors dont work without a connection
-                  (if (buffer-connection *current-buffer*)
+                  (if (connection *current-buffer*)
                       (when (and nick name)
                         (format str "[~A ()] [~A" nick name))
                       ;; default placeholders
                       (format str "[~A ()] [~A" :nick :network))
                   ;; if the current target is a channel, add it after the network
-                  (if (buffer-target *current-buffer*)
-                      (format str "/~A ()]" (buffer-target *current-buffer*))
+                  (if (target *current-buffer*)
+                      (format str "/~A ()]" (target *current-buffer*))
                       (format str "]"))))
         ;; add the current buffer number at the end of the line
         (crt:move swin 0 (- (crt:width swin) 6))

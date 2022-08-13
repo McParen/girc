@@ -134,8 +134,8 @@ For now, the raw irc message will simply be displayed in the output window."
 
     ;; when your nick joins the channel, make the channel the target of the buffer.
     ;;(when (string= prefix-nick
-    ;;               (connection-nickname (buffer-connection *current-buffer*)))
-    ;;  (setf (buffer-target *current-buffer*) channel)
+    ;;               (nickname (connection *current-buffer*)))
+    ;;  (setf (target *current-buffer*) channel)
     ;;  (update-status))
     (let ((buffer (find-buffer connection channel)))
       (echo buffer command prefix-nick channel))))
@@ -161,10 +161,10 @@ For now, the raw irc message will simply be displayed in the output window."
 
     ;; when your nick parts the channel and the channel is the current buffers target, remove it from the target.
     ;;(when (and (string= prefix-nick
-    ;;                    (connection-nickname (buffer-connection *current-buffer*)))
+    ;;                    (nickname (connection *current-buffer*)))
     ;;           (string= channel
-    ;;                    (buffer-target *current-buffer*)))
-    ;;  (setf (buffer-target *current-buffer*) nil)
+    ;;                    (target *current-buffer*)))
+    ;;  (setf (target *current-buffer*) nil)
     ;;  (update-status))
 
     (if reason

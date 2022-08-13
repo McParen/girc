@@ -6,55 +6,55 @@
   ((name
     :initarg       :name
     :initform      nil
-    :accessor      connection-name
+    :accessor      name
     :type          (or null string)
     :documentation "Name by which to refer to the connection, for example the name of the IRC network.")
 
    (hostname
     :initarg       :hostname
     :initform      nil
-    :accessor      connection-hostname
+    :accessor      hostname
     :type          (or null string)
     :documentation "Hostname of the IRC server to which the connection is established.")
 
    (port
     :initarg       :port
     :initform      6667
-    :accessor      connection-port
+    :accessor      port
     :type          integer
     :documentation "Port to which the server connection is established.")
 
    (socket
     :initform      nil
-    :accessor      connection-socket
+    :accessor      socket
     ;;:type          (or null usocket:socket??)
     :documentation "Connected socket.")
 
    ;; SB-SYS:FD-STREAM
    (stream
     :initform      nil
-    :accessor      connection-stream
-    :type          (or null stream)
+    :accessor      stream
+    :type          (or null cl:stream)
     :documentation "Stream associated with the connection socket.")
 
    (nickname
     :initarg       :nickname
     :initform      nil
-    :accessor      connection-nickname
+    :accessor      nickname
     :type          (or null string)
     :documentation "Nickname of the user to be registered with the connected server.")
 
    (username
     :initarg       :username
     :initform      "myuser"
-    :accessor      connection-username
+    :accessor      username
     :type          (or null string)
     :documentation "Username of the user to be registered with the connected server.")
 
    (realname
     :initarg       :realname
     :initform      "Realname"
-    :accessor      connection-realname
+    :accessor      realname
     :type          (or null string)
     :documentation "Realname of the user to be registered with the connected server.")
 
@@ -119,12 +119,12 @@ A proper CRLF \r\n ending is added to the message before it is sent.
 
 The allowed max length of the irc message including CRLF is 512 bytes."
   (let ((connection (if (eq connection t)
-                        (buffer-connection *current-buffer*)
+                        (connection *current-buffer*)
                         connection)))
     (if connection
         (if (connectedp connection)
-            (write-irc-line rawmsg (connection-stream connection))
-            (display t "-!- ~A not connected." (connection-name connection)))
+            (write-irc-line rawmsg (stream connection))
+            (display t "-!- ~A not connected." (name connection)))
         (display t "-!- Current buffer not associated with a connection."))))
 
 (defun send (connection command &optional params text)
@@ -156,7 +156,7 @@ The max allowed length of a single message is 512 bytes.
 If the read length including CRLF exceeds that limit, nil is returned."
   (let ((buf (make-array 512 :fill-pointer 0 :element-type '(unsigned-byte 8)))
         (cr-flag nil))
-    (loop for ch = (read-byte (connection-stream connection) nil :eof) do
+    (loop for ch = (read-byte (stream connection) nil :eof) do
       (cond ((and (not (eq ch :eof))
                   (/= ch 13)  ; CR
                   (/= ch 10)) ; LF
@@ -181,7 +181,7 @@ If the read length including CRLF exceeds that limit, nil is returned."
 (defmethod buffer ((con connection))
   "Loop through the list of buffers, return the buffer associated with the connection."
   (loop for buf in *buffers* do
-    (when (eq con (buffer-connection buf))
+    (when (eq con (connection buf))
       (return buf))))
 
 (defun handle-server-input ()
@@ -196,7 +196,7 @@ Bound to nil in girc-input-map."
       ;; do not set a frame-rate for the nil event here, because that uses sleep, which slows down typing.
       ;; set the input-blocking delay instead because that does not affect the input rate.
       (when (connectedp con)
-        (loop while (listen (connection-stream con)) do
+        (loop while (listen (stream con)) do
           (let ((rawmsg (read-raw-message con))) ; see connection.lisp
             (if rawmsg
                 (if (eq rawmsg :eof)
@@ -207,10 +207,10 @@ Bound to nil in girc-input-map."
                       (handle-message rawmsg con))) ; see event.lisp
                 (echo (buffer con) "Not a valid IRC message (missing CRLF ending)")))))))
   ;; if the current buffer has been changed, update the display.
-  (when (buffer-changed-p *current-buffer*)
+  (when (changedp *current-buffer*)
     (crt:save-excursion (input-window *ui*)
       (display-buffer *current-buffer*))))
 
 (defun find-connection (name)
   "Return the connection object associated with the given connection name."
-  (find name *connections* :key #'connection-name :test #'string=))
+  (find name *connections* :key #'name :test #'string=))
