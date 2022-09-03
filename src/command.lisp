@@ -49,6 +49,21 @@ Args is a string containing all arguments given to the command."
                 (lambda ,(list args) ,@body)
                 *user-commands*)))
 
+(defmacro defcmd (name lambda-list &body body)
+  "Add a handler for a user command, given by a symbol.
+
+The arguments given on the command line are parsed according to the
+given lambda list.
+
+If a &rest parameter is given, all the arguments are passed as a
+single string."
+  `(setf *user-commands*
+         (acons ,(symbol-name name)
+                (lambda (args)
+                  (parse-argument-bind ,lambda-list args
+                    ,@body))
+                *user-commands*)))
+
 ;; (bind-command msg 'command-msg)
 (defmacro bind-command (command function)
   "Binds an already existing function to a command, similar to define-command."
@@ -60,8 +75,12 @@ Args is a string containing all arguments given to the command."
 ;; send to the current server:
 ;; (send t :command list-of-param-strings text-string)
 
-(define-command logo (args)
+(defcmd logo ()
   (display-logo))
+
+;; eval the lisp form given on the command line and print the return in the buffer
+(defcmd eval (&rest args)
+  (echo t (eval (read-from-string args))))
 
 ;; /buffer kill
 ;; /buffer list
@@ -214,11 +233,14 @@ Args is a string containing all arguments given to the command."
 (define-command quit (args)
   (send t :quit))
 
-;; /raw args*
-(define-command raw (args)
-  (display t "/raw ~A" args)
+;; /quote args*
+;; /quote WHOIS McParen
+(defcmd quote (&rest args)
+  (echo t "/quote" args)
   (send-raw t args))
 
-;; WHOIS nick nick additionally return seconds idle signon time
-(define-command whois (args)
+;; /whois nick
+;; /whois nick nick
+;; If nick is given a second time, additionally return 317 seconds idle, signon time
+(defcmd whois (&rest args)
   (send t :whois (list args)))

@@ -204,6 +204,63 @@ Called from handle-user-command."
       ;; if we have no command, only the arguments.
       (cons nil str)))
 
+;; (parse-user-arguments '(a b c) "foo bar baz qux")
+;; => ("foo" "bar" "baz")
+
+;; (parse-user-arguments '(a b &rest c) "foo bar baz qux")
+;; => ("foo" "bar" "baz qux")
+
+;; (parse-user-arguments '(a b &rest c) "foo bar")
+;; => ("foo" "bar" "")
+
+;; (parse-user-arguments '(a b c) "foo")
+;; => ("foo" NIL NIL)
+
+(defun parse-user-arguments (lbd str)
+  "Take a string and a lambda list, return a list of destructured tokens.
+
+Only as many tokens are parsed as there are parameters, the remaining
+tokens are ignored, unless the last parameter is a &rest parameter.
+
+&rest is the only lambda keyword supported. It collects all remaining
+arguments in a single string.
+
+If there are more parameters than string tokens, nil will be returned
+for each."
+  (let* ((restp (member '&rest lbd))
+         ;; list of required arguments
+         (req (if restp
+                  ;; remove &rest and the rest arg
+                  (subseq lbd 0 (position '&rest lbd))
+                  lbd))
+         ;; number of required arguments
+         (nreq (length req)))
+    (multiple-value-bind (reqs pos)
+        ;; split the first n required args
+        ;; pos = end of nth arg
+        (split-sequence:split-sequence #\space str :count nreq)
+      (if restp
+          (if (= 0 (length (subseq str pos)))
+              ;; if the rest string is empty, return nil in its place.
+              (append reqs (list nil))
+              ;; if there is a rest, add it as the last string
+              (append reqs (list (subseq str pos))))
+          (if (> nreq (length reqs))
+              (append reqs (make-list (- nreq (length reqs))))
+              reqs)))))
+
+(defmacro parse-argument-bind (lbd str &body body)
+  "Parse space-separated words from string and bind them to the given parameters.
+
+If the last parameter is designed as &rest, collect all remaining words into it."
+  (let ((keywords (if (member '&rest lbd)
+                      (remove '&rest lbd)
+                      lbd)))
+      ;; remove the real rest keyword to avoid placing the rest string in a list.
+      `(destructuring-bind ,keywords
+           (parse-user-arguments ',lbd ,str)
+         ,@body)))
+
 (defun string-car (str)
   "1 2 3 => 1"
   (let ((pos (position #\space str)))
