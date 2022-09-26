@@ -62,9 +62,40 @@
     :initform      nil
     :accessor      connectedp
     :type          boolean
-    :documentation "Flag to denote that the server is connected."))
+    :documentation "Flag to denote that the server is connected.")
+
+   (channels
+    :initform      nil
+    :accessor      channels
+    :type          (or null cons)
+    :documentation "List of joined channels."))
 
   (:documentation "Parameters necessary to establish a connection to an IRC server."))
+
+(defclass channel ()
+  ((name
+    :initarg       :name
+    :initform      nil
+    :accessor      name
+    :type          (or null string)
+    :documentation "Name of the channel.")
+
+   (nicknames
+    :initform      nil
+    :accessor      nicknames
+    :type          (or null cons)
+    :documentation "List of nicknames in a channel.")
+
+   (rpl-namreply-started-p
+    :initform      nil
+    :type          boolean
+    :documentation
+    "Boolean flag to mark the start of a sequence of rpl-namreply (353) events.
+
+It is set to t by the first rpl-namreply event in a sequence and is set to nil
+by rpl-endofnames (366)."))
+
+  (:documentation ""))
 
 (defun connect (connection)
   "Connect a socket to the host of the connection and register a nickname."
@@ -119,7 +150,7 @@ A proper CRLF \r\n ending is added to the message before it is sent.
 
 The allowed max length of the irc message including CRLF is 512 bytes."
   (let ((connection (if (eq connection t)
-                        (connection *current-buffer*)
+                        (connection (current-buffer))
                         connection)))
     (if connection
         (if (connectedp connection)
@@ -180,7 +211,7 @@ If the read length including CRLF exceeds that limit, nil is returned."
 ;; (buffer con) is only used here in handle-server-input
 (defmethod buffer ((con connection))
   "Loop through the list of buffers, return the buffer associated with the connection."
-  (loop for buf in *buffers* do
+  (loop for buf in (crt:items *buffers*) do
     (when (eq con (connection buf))
       (return buf))))
 
@@ -190,7 +221,8 @@ If the read length including CRLF exceeds that limit, nil is returned."
 Bound to nil in girc-input-map."
   ;; do not process if a connection has not been established first.
   (when *connections*
-    (loop for con in *connections* do
+    ;;(loop for con in *connections* do
+    (dolist (con *connections*)
       ;; do not read a single message then sleep then read the next.
       ;; read as many messages as we can until listen returns nil.
       ;; do not set a frame-rate for the nil event here, because that uses sleep, which slows down typing.
@@ -200,16 +232,13 @@ Bound to nil in girc-input-map."
           (let ((rawmsg (read-raw-message con))) ; see connection.lisp
             (if rawmsg
                 (if (eq rawmsg :eof)
-                    (echo (buffer con) "Server connection lost (End Of File)")
+                    (echo (buffer con) "-!- Server connection lost (End Of File)")
                     ;; after anything is written to the output window, return the cursor to the input window.
                     (crt:save-excursion (input-window *ui*)
                       ;; message handline writes to the screen, so it has to happen in the main thread
                       (handle-message rawmsg con))) ; see event.lisp
-                (echo (buffer con) "Not a valid IRC message (missing CRLF ending)")))))))
-  ;; if the current buffer has been changed, update the display.
-  (when (changedp *current-buffer*)
-    (crt:save-excursion (input-window *ui*)
-      (display-buffer *current-buffer*))))
+                (echo (buffer con) "-!- Not a valid IRC message (missing CRLF ending)")))))))
+  (update-output))
 
 (defun find-connection (name)
   "Return the connection object associated with the given connection name."

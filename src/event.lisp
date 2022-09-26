@@ -121,13 +121,12 @@ For now, the raw irc message will simply be displayed in the output window."
 
 (bind-event t 'default-event-handler)
 
-;; Syntax:
-;; :<prefix> JOIN :<channel>
-;; :<prefix> JOIN <channel>
+;; Event:   JOIN
+;; Syntax:  :<prefix> JOIN :<channel>
+;; Syntax:  :<prefix> JOIN <channel>
 ;; Comment: The target channel is on some servers param 0, sometimes the text.
-;; Examples:
-;; :haom!~myuser@78-2-83-238.adsl.net.com.com JOIN :#testus
-;; :haom!~myuser@78-2-83-238.adsl.net.com.com JOIN #testus
+;; Example: :haom!~myuser@78-2-83-238.adsl.net.com.com JOIN :#testus
+;; Example: :haom!~myuser@78-2-83-238.adsl.net.com.com JOIN #testus
 (define-event join (msg connection prefix-nick command params text)
   (let ((channel (cond (text text)
                        (params (nth 0 params)))))
@@ -138,7 +137,7 @@ For now, the raw irc message will simply be displayed in the output window."
     ;;  (setf (target *current-buffer*) channel)
     ;;  (update-status))
     (let ((buffer (find-buffer connection channel)))
-      (echo buffer command prefix-nick channel))))
+      (echo buffer "***" prefix-nick "joined" channel))))
 
 ;; Syntax: :<prefix> NOTICE <target> :<text>
 ;; Examples:
@@ -146,7 +145,7 @@ For now, the raw irc message will simply be displayed in the output window."
 ;; :kornbluth.freenode.net NOTICE * :*** Checking Ident
 ;; :kornbluth.freenode.net NOTICE * :*** Found your hostname
 (define-event notice (msg buffer command text)
-  (display buffer "~A: ~A" command text))
+  (echo buffer text))
 
 ;; Syntax: :<prefix> PART <channel> :<reason>
 ;; Syntax: :<prefix> PART :<chan>
@@ -168,14 +167,26 @@ For now, the raw irc message will simply be displayed in the output window."
     ;;  (update-status))
 
     (if reason
-        (echo buffer command prefix-nick channel reason)
-        (echo buffer command prefix-nick channel))))
+        (display buffer "*** ~A left ~A (~A)" prefix-nick channel reason)
+        (echo buffer "***" prefix-nick "left" channel))))
 
-(define-event quit (msg buffer prefix-nick command text)
-  (echo buffer command prefix-nick text))
+;; Event:   QUIT
+;; Syntax:  :<prefix> QUIT :<reason>
+;; Comment: Generates an ERROR reply.
+;; Example: :haom!~myuser@ip-088-152-010-043.um26.pools.vodafone-ip.de QUIT :Client Quit
+(define-event quit (msg prefix-nick connection text)
+  (dolist (buffer (crt:items *buffers*))
+    (when (and (eq connection (connection buffer))
+               (target buffer)
+               (member prefix-nick
+                       (nicknames (find (target buffer) (channels (connection buffer)) :key #'name :test #'string=))
+                       :test #'string=))
+      (if text
+          (display buffer "*** ~A quit (~A)" prefix-nick text)
+          (echo buffer "***" prefix-nick "quit")))))
 
 (define-event ping (msg buffer rawmsg connection text)
-  (when *show-server-ping*
+  (when conf:show-server-ping
     (echo buffer rawmsg)
     (display buffer "PONG :~A" text))
   ;; return a PONG to the server which sent the PING.
@@ -197,13 +208,130 @@ For now, the raw irc message will simply be displayed in the output window."
           (display buffer "<~A> ~A" prefix-nick text)
           (display buffer "*~A* ~A" prefix-nick text)))))
 
-;; :kornbluth.freenode.net 372 haom :- Thank you for using freenode!
-;; :kornbluth.freenode.net 376 haom :End of /MOTD command.
+(defun display-event-text (msg)
+  "Basic event handler to simply display the message text."
+  (echo (buffer msg) (text msg)))
+
+
+
+;;; Replies 001 to 004 are sent upon a successful registration
+
+;; Number:  001
+;; Event:   RPL_WELCOME
+;; Syntax:  :<prefix> 001 <nick> :<text>
+;; Example: :calcium.libera.chat 001 haom :Welcome to the Libera.Chat Internet Relay Chat Network haom
+(bind-event rpl-welcome 'display-event-text)
+
+;; Number:  002
+;; Event:   RPL_YOURHOST
+;; Syntax:  :<prefix> 002 <nick> :<text>
+;; Example: :calcium.libera.chat 002 haom :Your host is calcium.libera.chat[64.86.243.186/6667], running version solanum-1.0-dev
+(bind-event rpl-yourhost 'display-event-text)
+
+;; Number:  003
+;; Event:   RPL_CREATED
+;; Syntax:  :<prefix> 003 <nick> :<text>
+;; Example: :calcium.libera.chat 003 haom :This server was created Wed Aug 24 2022 at 00:18:16 UTC
+(bind-event rpl-created 'display-event-text)
+
+;; Number:  004
+;; Event:   RPL_MYINFO
+;; Syntax:  :<prefix> 004 <nick> <server name> <version> <user modes> <channel modes> <channel modes>
+;; Example: :calcium.libera.chat 004 haom calcium.libera.chat solanum-1.0-dev DGMQRSZaghilopsuwz CFILMPQSTbcefgijklmnopqrstuvz bkloveqjfI
+(define-event rpl-myinfo (msg)
+  nil)
+
+;; Number:  005
+;; Event:   RPL_ISUPPORT
+;; Syntax:  :<prefix> 005 <nick> <params> :<text>
+;; Comment: Here the server communicates features to the client
+;; Example: :calcium.libera.chat 005 haom ETRACE SAFELIST ELIST=CMNTU MONITOR=100 CALLERID=g FNC WHOX KNOCK CHANTYPES=# EXCEPTS INVEX CHANMODES=eIbq,k,flj,CFLMPQSTcgimnprstuz :are supported by this server
+;; Example: :calcium.libera.chat 005 haom CHANLIMIT=#:250 PREFIX=(ov)@+ MAXLIST=bqeI:100 MODES=4 NETWORK=Libera.Chat STATUSMSG=@+ CASEMAPPING=rfc1459 NICKLEN=16 MAXNICKLEN=16 CHANNELLEN=50 TOPICLEN=390 DEAF=D :are supported by this server
+;; Example: :calcium.libera.chat 005 haom TARGMAX=NAMES:1,LIST:1,KICK:1,WHOIS:1,PRIVMSG:4,NOTICE:4,ACCEPT:,MONITOR: EXTBAN=$,ajrxz :are supported by this server
+(define-event rpl-isupport (msg)
+  nil)
+
+
+;;; Replies sent upon a successful login on a server
+
+;; Number:  251
+;; Event:   RPL_LUSERCLIENT
+;; Syntax:  :<prefix> 251 <nick> :<text>
+;; Text:    :There are <int> users and <int> invisible on <int> servers
+;; Example: :tantalum.libera.chat 251 haom :There are 71 users and 44327 invisible on 27 servers
+(bind-event rpl-luserclient 'display-event-text)
+
+;; Number:  252
+;; Event:   RPL_LUSEROP
+;; Syntax:  :<prefix> 252 <int> :<text>
+;; Comment: Number of IRC operators online
+;; Example: :tantalum.libera.chat 252 haom 36 :IRC Operators online
+(define-event rpl-luserop (msg)
+  nil)
+
+;; Number:  253
+;; Event:   RPL_LUSERUNKNOWN
+;; Syntax:  :<prefix> 253 <nick> <int> :<text>
+;; Comment: Number of connections in an unknown or unregistered state
+;; Example: :tantalum.libera.chat 253 haom 14 :unknown connection(s)
+(define-event rpl-luserunknown (msg)
+  nil)
+
+;; Number:  254
+;; Event:   RPL_LUSERCHANNELS
+;; Example: :tantalum.libera.chat 254 haom 22210 :channels formed
+(define-event rpl-luserchannels (msg)
+  nil)
+
+;; Number:  255
+;; Event:   RPL_LUSERME
+;; Example: :tantalum.libera.chat 255 haom :I have 2800 clients and 1 servers
+(define-event rpl-luserme (msg)
+  nil)
+
+;; Number:  265
+;; Event:   RPL_LOCALUSERS
+;; Example: :tantalum.libera.chat 265 haom 2800 4413 :Current local users 2800, max 4413
+(define-event rpl-localusers (msg)
+  nil)
+
+;; Number:  266
+;; Event:   RPL_GLOBALUSERS
+;; Example: :tantalum.libera.chat 266 haom 44398 52334 :Current global users 44398, max 52334
+(bind-event rpl-globalusers 'display-event-text)
+
+;; Number:  250
+;; Event:   RPL_STATSCONN
+;; Example: :tantalum.libera.chat 250 haom :Highest connection count: 4414 (4413 clients) (289303 connections received)
+(bind-event rpl-statsconn 'display-event-text)
+
+
+;;; Replies sent as response to a command
+
+;; Number:  375
+;; Event:   RPL_MOTDSTART
+;; Syntax:  :<prefix> 375 <nick> :<text>
+;; Comment: Start of a MOTD response
+;; Example: :erbium.libera.chat 375 haom :- erbium.libera.chat Message of the Day -
+(define-event rpl-motdstart (msg buffer text)
+  (echo buffer "--- Start of /MOTD.")
+  (echo buffer text))
+
+;; Number:  372
+;; Event:   RPL_MOTD
+;; Syntax:  :<prefix> 372 <nick> :<text>
+;; Comment: MOTD file displayed line by line
+;; Example: :kornbluth.freenode.net 372 haom :- Thank you for using freenode!
 (define-event rpl-motd (msg buffer text)
   (echo buffer text))
 
+;; Number:  376
+;; Event:   RPL_ENDOFMOTD
+;; Syntax:  :<prefix> 376 <nick> :<text>
+;; Comment: End of a MOTD response
+;; Example: :kornbluth.freenode.net 376 haom :End of /MOTD command.
 (define-event rpl-endofmotd (msg buffer text)
-  (echo buffer text))
+  (echo buffer "---" text))
 
 ;; Number:
 ;; Event:
@@ -221,9 +349,6 @@ For now, the raw irc message will simply be displayed in the output window."
   (disconnect connection)
   (update-status))
 
-;;; JOIN
-
-;; :haom!~myuser@78-2-83-238.adsl.net.com.com JOIN :#test
 
 ;;; LIST
 
@@ -232,6 +357,7 @@ For now, the raw irc message will simply be displayed in the output window."
 ;; :irc.efnet.nl 321 haom Channel :Users  Name
 ;; :irc.efnet.nl 322 haom #IRC30 258 :Call your Mom :)
 ;; :irc.efnet.nl 323 haom :End of /LIST
+
 
 ;;; NAMES
 
@@ -242,21 +368,33 @@ For now, the raw irc message will simply be displayed in the output window."
 ;; Event:   RPL_NAMREPLY
 ;; Syntax:  :<prefix> 353 <nick> = <channel> :<nicks>
 ;; Example: :irc.efnet.nl 353 haom = #test :@haom
-(define-event rpl-namreply (msg)
-  nil)
+(define-event rpl-namreply (msg connection params text)
+  (destructuring-bind (nick _ channel) params
+    (when text
+      (let ((chan (find channel (channels connection) :key #'name :test #'string=)))
+        (when chan
+          (unless (slot-value chan 'rpl-namreply-started-p)
+            (setf (slot-value chan 'rpl-namreply-started-p) t
+                  (nicknames chan) nil))
+          (dolist (nick (split-sequence:split-sequence #\space text :test #'equal))
+            (push nick (nicknames chan))))))))
 
 ;; Number:  366
 ;; Event:   RPL_ENDOFNAMES
 ;; Syntax:  :<prefix> 366 <nick> <channel> :<info>
 ;; Example: :irc.efnet.nl 366 haom #test :End of /NAMES list.
-(define-event rpl-endofnames (msg)
-  nil)
+(define-event rpl-endofnames (msg connection params)
+  (destructuring-bind (nick channel) params
+    (let ((chan (find channel (channels connection) :key #'name :test #'string=)))
+      (when chan
+        (setf (slot-value chan 'rpl-namreply-started-p) nil)))))
 
 ;;; MODE
 
 ;; :irc.efnet.nl MODE #test +nt
 ;; :irc.efnet.nl 324 haom #test +tn
 ;; :irc.efnet.nl 329 haom #test 1598613944
+
 
 ;;; TOPIC
 
@@ -314,7 +452,7 @@ For now, the raw irc message will simply be displayed in the output window."
 ;; Example: :calvino.freenode.net 311 arrk23 arrk23 ~arrakis24 hostname-ip.net * :McLachlan
 (define-event rpl-whoisuser (msg buffer params text)
   (destructuring-bind (nick target user host star) params
-    (display buffer "-- Start of /WHOIS list.")
+    (echo buffer "--- Start of /WHOIS list.")
     (echo buffer "Nick:" target)
     (echo buffer "User:" user)
     (echo buffer "Host:" host)
@@ -346,7 +484,7 @@ For now, the raw irc message will simply be displayed in the output window."
 ;; Comment: Reply to WHOIS - End of list
 ;; Example: :calvino.freenode.net 318 arrk23 arrk23 :End of /WHOIS list.
 (define-event rpl-endofwhois (msg buffer text)
-  (display buffer "-- ~A" text))
+  (echo buffer "---" text))
 
 ;; Number:  319
 ;; Event:   RPL_WHOISCHANNELS

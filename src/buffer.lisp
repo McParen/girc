@@ -19,7 +19,7 @@
     :initform      nil
     :accessor      changedp
     :type          boolean
-    :documentation "Flag to denote that the buffer was changed an can be redisplayed.")
+    :documentation "Flag to denote that the buffer was changed and should be redisplayed by update-output.")
 
    (max-length
     :initform      100
@@ -38,27 +38,38 @@
 
   (:documentation "A buffer is a list of strings to be displayed to the output window."))
 
-(defparameter *current-buffer* (make-instance 'buffer)
-  "Pointer to the current selected buffer.")
+(defparameter *buffers* (make-instance 'crt:collection :items (list (make-instance 'buffer)))
+  "Collection of buffers.")
 
-(defparameter *current-buffer-number* 0)
+(defun current-buffer ()
+  (crt:current-item *buffers*))
 
-(defparameter *buffers* (list *current-buffer*)
-  "List of buffers.")
+(defun current-buffer-number ()
+  (crt:current-item-number *buffers*))
 
-(defun select-next-buffer (field event)
-  "Set the next buffer in the buffer list as the currently displayed buffer."
-  (setf *current-buffer-number* (mod (1+ *current-buffer-number*) (length *buffers*))
-        *current-buffer* (nth *current-buffer-number* (reverse *buffers*))
-        ;; flag the next buffer for display
-        (changedp *current-buffer*) t)
-  (update-status))
+(defun remove-buffer ()
+  (crt:remove-item *buffers*))
+
+(defun append-buffer (buffer)
+  (crt:append-item *buffers* buffer))
+
+(defun select-next-buffer ()
+  (with-accessors ((buf crt:current-item)) *buffers*
+    (crt:select-next-item *buffers*)
+    (setf (changedp buf) t) ;; flag current buffer for redisplay
+    (update-status)))
+
+(defun select-last-buffer ()
+  (with-accessors ((buf crt:current-item)) *buffers*
+    (crt:select-last-item *buffers*)
+    (setf (changedp buf) t) ;; flag current buffer for redisplay
+    (update-status)))
 
 (defun push-to-buffer (string buffer)
   "Push a new line to the output buffer, to be displayed by display-buffer.
 
 If buffer is t, the current buffer is used."
-  (let ((buffer (if (eq buffer t) *current-buffer* buffer)))
+  (let ((buffer (if (eq buffer t) (current-buffer) buffer)))
     (with-accessors ((lines lines) (changedp changedp) (max max-length)) buffer
       (push string lines)
       (when (> (length lines) max)
@@ -79,17 +90,25 @@ First try to return a buffer without a specified target, i.e. the main buffer fo
   "Check if there is a buffer associated with a connection and a target channel.
 
 When there is no connection with that target, return the buffer for the connection."
-  (let ((buf1 (loop for buf in *buffers*
-                    when (and (eq connection (connection buf))
-                              (equal target (target buf)))
-                      return buf)))
-    (if buf1
-        buf1
-        ;; if buf for the target was not found, return the buffer for target nil
-        (loop for buf in *buffers*
-              when (and (eq connection (connection buf))
-                        (eq (target buf) nil))
-                return buf))))
+  (if target
+      ;; try to find a buffer where both connection and target match
+      (let ((buf1 (loop for buf in (crt:items *buffers*)
+                        when (and (eq connection (connection buf))
+                                  (equal target (target buf)))
+                          return buf)))
+        (if buf1
+            buf1
+            ;; if buf for the target was not found, return the buffer for target nil
+            (loop for buf in (crt:items *buffers*)
+                  when (and (eq connection (connection buf))
+                            (eq (target buf) nil))
+                    return buf)))
+
+      ;; if target is nil,
+      ;; find the first buffer where only the connection matches
+      (loop for buf in (crt:items *buffers*)
+            when (eq connection (connection buf))
+              return buf)))
 
 (defun display (buffer template &rest args)
   "Display the format template and the args in the buffer.
@@ -145,11 +164,17 @@ or the display function can be used which allows format controls."
     ;; after the changes have been displayed, set the flag to nil
     (setf changedp nil)))
 
+(defun update-output ()
+  "If the current buffer has been changed, update the output window."
+  (when (changedp (current-buffer))
+    (crt:save-excursion (input-window *ui*)
+      (display-buffer (current-buffer)))))
+
 ;; called from: connect (command), error (event)
 (defun update-status ()
   "Set the status line of the current buffer."
   (with-accessors ((swin status-window)) *ui*
-    (with-accessors ((nick nickname) (name name)) (connection *current-buffer*)
+    (with-accessors ((nick nickname) (name name)) (connection (current-buffer))
       ;; put the cursor back to the input window after updating the status window.
       (crt:save-excursion (input-window *ui*)
         (crt:clear swin)
@@ -157,18 +182,18 @@ or the display function can be used which allows format controls."
         (format swin
                 (with-output-to-string (str)
                   ;; the accessors dont work without a connection
-                  (if (connection *current-buffer*)
+                  (if (connection (current-buffer))
                       (when (and nick name)
                         (format str "[~A ()] [~A" nick name))
                       ;; default placeholders
                       (format str "[~A ()] [~A" :nick :network))
                   ;; if the current target is a channel, add it after the network
-                  (if (target *current-buffer*)
-                      (format str "/~A ()]" (target *current-buffer*))
+                  (if (target (current-buffer))
+                      (format str "/~A ()]" (target (current-buffer)))
                       (format str "]"))))
         ;; add the current buffer number at the end of the line
         (crt:move swin 0 (- (crt:width swin) 6))
-        (format swin "~5@A" (format nil "[~A]" *current-buffer-number*))
+        (format swin "~5@A" (format nil "[~A]" (current-buffer-number)))
 
         ;; after we refresh the window, return the cursor to the input line, use save-excursion in echo?
         (crt:refresh swin)))))

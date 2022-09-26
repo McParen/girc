@@ -204,17 +204,61 @@ Called from handle-user-command."
       ;; if we have no command, only the arguments.
       (cons nil str)))
 
+;; If there are more tokens than parameters, ignore the additional tokens.
+
 ;; (parse-user-arguments '(a b c) "foo bar baz qux")
 ;; => ("foo" "bar" "baz")
+
+;; To catch the additional tokens, use the &rest keyword.
 
 ;; (parse-user-arguments '(a b &rest c) "foo bar baz qux")
 ;; => ("foo" "bar" "baz qux")
 
-;; (parse-user-arguments '(a b &rest c) "foo bar")
-;; => ("foo" "bar" "")
+;; If there are more parameters than tokens, they are optional, so return nil
 
 ;; (parse-user-arguments '(a b c) "foo")
 ;; => ("foo" NIL NIL)
+;; (parse-user-arguments '(a b &rest c) "foo bar")
+;; => ("foo" "bar" "")
+
+(defun test-params ()
+  ;; 1. too many arguments
+  ;; arguments for which no parameters exist are ignored
+  (format t "1.~A "
+          (equalp (parse-user-arguments '(a b c) "foo bar baz qux")
+                  (list "foo" "bar" "baz")))
+  ;; 2. too few arguments
+  ;; all parameters are optional, and return nil if too fel arguments are passed
+  (format t "2.~A "
+          (equalp (parse-user-arguments '(a b c) "foo")
+                  (list "foo" nil nil)))
+  ;; 3. too few arguments
+  (format t "3.~A "
+          (equalp (parse-user-arguments '(a) "")
+                  (list nil)))
+  ;; 4. rest parameter
+  ;; they are collected, if the last parameter is &rest
+  (format t "4.~A "
+          (equalp (parse-user-arguments '(a b &rest c) "foo bar baz qux")
+                  (list "foo" "bar" "baz qux")))
+  ;; 5. rest parameter but no rest arguments
+  ;; the rest parameter simply returns nil
+  (format t "5.~A "
+          (equalp (parse-user-arguments '(a b &rest c) "foo bar")
+                  (list "foo" "bar" nil)))
+  ;; 6. rest parameter but no rest arguments
+  (format t "6.~A "
+          (equalp (parse-user-arguments '(&rest a) "")
+                  (list nil)))
+  ;; 7. no arguments
+  (format t "7.~A "
+          (equalp (parse-user-arguments '(a b c &rest d) "")
+                  (list nil nil nil nil)))
+  ;; 8. no parameters
+  ;; returns nil, or an empty list
+  (format t "8.~A "
+          (equalp (parse-user-arguments '() "foo bar baz")
+                  nil)))
 
 (defun parse-user-arguments (lbd str)
   "Take a string and a lambda list, return a list of destructured tokens.
@@ -239,15 +283,23 @@ for each."
         ;; split the first n required args
         ;; pos = end of nth arg
         (split-sequence:split-sequence #\space str :count nreq)
-      (if restp
-          (if (= 0 (length (subseq str pos)))
-              ;; if the rest string is empty, return nil in its place.
-              (append reqs (list nil))
-              ;; if there is a rest, add it as the last string
-              (append reqs (list (subseq str pos))))
-          (if (> nreq (length reqs))
-              (append reqs (make-list (- nreq (length reqs))))
-              reqs)))))
+      ;; if there are no args, split seq returns an empty string, but we want nil
+      (let ((reqs (if (and (= (length reqs) 1)
+                           (= (length (car reqs)) 0))
+                      nil
+                      reqs))
+            ;; if the rest string is empty, return nil in its place.
+            ;; if there is a rest, put them all in one string.
+            (rest (if (= 0 (length (subseq str pos)))
+                      nil
+                      (subseq str pos))))
+        (if restp
+            (if (> nreq (length reqs))
+                (append reqs (make-list (- nreq (length reqs))) (list rest))
+                (append reqs (list rest)))
+            (if (> nreq (length reqs))
+                (append reqs (make-list (- nreq (length reqs))))
+                reqs))))))
 
 (defmacro parse-argument-bind (lbd str &body body)
   "Parse space-separated words from string and bind them to the given parameters.
@@ -289,8 +341,8 @@ If the last parameter is designed as &rest, collect all remaining words into it.
 (defun ntharg (n args)
   (string-nth n args))
 
-;; (lenarg "a b c") => 3
-;; (lenarg "") => 0
+;; (arglen "a b c") => 3
+;; (arglen "") => 0
 (defun arglen (args)
   "Return the length of the arguments list (= number of passed arguments)."
   (length (split-sequence:split-sequence #\space args :remove-empty-subseqs t)))
@@ -339,6 +391,10 @@ If the last parameter is designed as &rest, collect all remaining words into it.
 ;; https://stackoverflow.com/questions/8830888/whats-the-canonical-way-to-join-strings-in-a-list
 
 ;; from the cl-cookbook
+
+;; also see cl-ppcre:regex-replace-all
+;; CL-USER> (ppcre:regex-replace-all "\\$\\{a\\}" "faa baa caa ist ${a} qux" "WORLD")
+;; "faa baa caa ist WORLD qux"
 
 ;; Example: (replace-all "a $B c d B e f b" "$B" "nick") => "a nick c d B e f b"
 (defun replace-all (string part replacement &key (test #'char=))
