@@ -42,6 +42,8 @@
 
   ;; ^N (14)
   (#\so 'select-next-buffer)
+  ;; ^P (16)
+  (#\Dle 'select-previous-buffer)
 
   ;; TODO 201122 how to bind irc command directly without having to wrap them in a lambda
   ;; C-w = 23 = #\etb = End of Transmission Block

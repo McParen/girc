@@ -51,7 +51,7 @@ Bound to #\newline in girc-input-map."
 ;; /buffer target <channel>
 ;; /buffer connection <connection>
 
-(defun buffer (cmd arg0 arg1)
+(defun buffer (cmd &optional arg0 arg1)
   (alexandria:switch (cmd :test #'string=)
     ("kill"
      (if (= 1 (length (crt:items *buffers*)))
@@ -217,7 +217,7 @@ Bound to #\newline in girc-input-map."
       (progn
         ;; if the given channel is the current target, kill the buffer when leaving the channel
         (when (string= channel (target (current-buffer)))
-          (buffer "kill" nil nil))
+          (buffer "kill"))
 
         ;; remove the channel from the channel list of the connection
         (setf (channels (connection (current-buffer)))

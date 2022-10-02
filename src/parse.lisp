@@ -228,7 +228,7 @@ Called from handle-user-command."
           (equalp (parse-user-arguments '(a b c) "foo bar baz qux")
                   (list "foo" "bar" "baz")))
   ;; 2. too few arguments
-  ;; all parameters are optional, and return nil if too fel arguments are passed
+  ;; all parameters are optional, and return nil if too few arguments are passed
   (format t "2.~A "
           (equalp (parse-user-arguments '(a b c) "foo")
                   (list "foo" nil nil)))
@@ -272,26 +272,33 @@ arguments in a single string.
 If there are more parameters than string tokens, nil will be returned
 for each."
   (let* ((restp (member '&rest lbd))
-         ;; list of required arguments
-         (req (if restp
-                  ;; remove &rest and the rest arg
-                  (subseq lbd 0 (position '&rest lbd))
-                  lbd))
-         ;; number of required arguments
+         ;; list of required (and optional) arguments
+         ;; all arguments are optional anyway, remove the &optional keyword.
+         ;; we still can mark args optional, but this only affects the
+         ;; function when it is called from lisp.
+         (req (remove '&optional
+                      (if restp
+                          ;; remove &rest and the rest arg
+                          (subseq lbd 0 (position '&rest lbd))
+                          lbd)))
+         ;; number of required (and optional) arguments
          (nreq (length req)))
     (multiple-value-bind (reqs pos)
-        ;; split the first n required args
+        ;; tokenize the first n required (and optional) args
+        ;; reqs = list of parsed required (and optional) arguments
         ;; pos = end of nth arg
         (split-sequence:split-sequence #\space str :count nreq)
-      ;; if there are no args, split seq returns an empty string, but we want nil
-      (let ((reqs (if (and (= (length reqs) 1)
-                           (= (length (car reqs)) 0))
+      ;; if there are no args, split-sequence returns an empty string, but we want nil
+      (let ((reqs (if (and (= (length reqs) 1)        ; a list with one empty string
+                           (= (length (car reqs)) 0)) ; empty string = length 0
+                      ;; use nil instead of one empty string
                       nil
                       reqs))
-            ;; if the rest string is empty, return nil in its place.
-            ;; if there is a rest, put them all in one string.
+            ;; if the rest string is empty
             (rest (if (= 0 (length (subseq str pos)))
+                      ;; return nil in its place.
                       nil
+                      ;; if there is a rest, put them all in one string.
                       (subseq str pos))))
         (if restp
             (if (> nreq (length reqs))

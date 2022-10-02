@@ -130,12 +130,6 @@ For now, the raw irc message will simply be displayed in the output window."
 (define-event join (msg connection prefix-nick command params text)
   (let ((channel (cond (text text)
                        (params (nth 0 params)))))
-
-    ;; when your nick joins the channel, make the channel the target of the buffer.
-    ;;(when (string= prefix-nick
-    ;;               (nickname (connection *current-buffer*)))
-    ;;  (setf (target *current-buffer*) channel)
-    ;;  (update-status))
     (let ((buffer (find-buffer connection channel)))
       (echo buffer "***" prefix-nick "joined" channel))))
 
@@ -157,18 +151,23 @@ For now, the raw irc message will simply be displayed in the output window."
          (reason (if (and params text) text nil))
          ;; if there is a buffer for the channel, send part to that buffer
          (buffer (find-buffer connection channel)))
-
-    ;; when your nick parts the channel and the channel is the current buffers target, remove it from the target.
-    ;;(when (and (string= prefix-nick
-    ;;                    (nickname (connection *current-buffer*)))
-    ;;           (string= channel
-    ;;                    (target *current-buffer*)))
-    ;;  (setf (target *current-buffer*) nil)
-    ;;  (update-status))
-
     (if reason
         (display buffer "*** ~A left ~A (~A)" prefix-nick channel reason)
         (echo buffer "***" prefix-nick "left" channel))))
+
+;; Event:   NICK
+;; Example: :_vanessa_!~farawayas@user/farawayastronaut NICK :vaness
+;; Example: :ohokthen!~igloo@172.58.165.154 NICK :FarMoreSinister
+(define-event nick (msg prefix-nick connection text)
+  (dolist (buffer (crt:items *buffers*))
+    (when (and (eq connection (connection buffer))
+               (target buffer)
+               (member prefix-nick
+                       (nicknames (find (target buffer) (channels (connection buffer)) :key #'name :test #'string=))
+                       :test #'string=))
+      (if text
+          (display buffer "*** ~A is now known as ~A" prefix-nick text)
+          (echo buffer "***" prefix-nick "is now known as ...")))))
 
 ;; Event:   QUIT
 ;; Syntax:  :<prefix> QUIT :<reason>

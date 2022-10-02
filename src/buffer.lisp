@@ -53,10 +53,16 @@
 (defun append-buffer (buffer)
   (crt:append-item *buffers* buffer))
 
+(defun select-previous-buffer ()
+  (with-accessors ((buf crt:current-item)) *buffers*
+    (crt:select-previous-item *buffers*)
+    (setf (changedp buf) t) ;; flag current buffer for redisplay
+    (update-status)))
+
 (defun select-next-buffer ()
   (with-accessors ((buf crt:current-item)) *buffers*
     (crt:select-next-item *buffers*)
-    (setf (changedp buf) t) ;; flag current buffer for redisplay
+    (setf (changedp buf) t)
     (update-status)))
 
 (defun select-last-buffer ()
