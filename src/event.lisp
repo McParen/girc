@@ -405,7 +405,12 @@ For now, the raw irc message will simply be displayed in the output window."
 (define-event rpl-topic (msg connection params text)
   (destructuring-bind (client channel) params
     (let ((buffer (find-buffer connection channel)))
-      (display buffer "TOPIC for ~A: ~A" channel text))))
+      (when text
+        (display buffer "TOPIC for ~A: ~A" channel text)
+        (let ((chan (find channel (channels connection) :key #'name :test #'string=)))
+          (when chan
+            (setf (slot-value chan 'topic) text)
+            (update-topic)))))))
 
 ;; Number:   333
 ;; Event:    RPL_TOPICWHOTIME

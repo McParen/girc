@@ -1,7 +1,5 @@
 (in-package :de.anvi.girc)
 
-(defparameter *ui* nil "Global variable holding an instance of the user interface.")
-
 (defclass user-interface ()
   ((main-screen
     :initarg       :screen
@@ -10,26 +8,12 @@
     :type          (or null crt:screen)
     :documentation "The main screen, not used for displaying content.")
 
-   (output-window
-    :initarg       :output-window
+   (layout
+    :initarg       :layout
     :initform      nil
-    :accessor      output-window
-    :type          (or null crt:window)
-    :documentation "Window for the display of server and command output.")
-
-   (status-window
-    :initarg       :status-window
-    :initform      nil
-    :accessor      status-window
-    :type          (or null crt:window)
-    :documentation "Window for the status line.")
-
-   (input-window
-    :initarg       :input-window
-    :initform      nil
-    :accessor      input-window
-    :type          (or null crt:window)
-    :documentation "Window for the user command input field.")
+    :accessor      layout
+    :type          (or null crt:layout)
+    :documentation "Layout object containing the windows.")
 
    (input-field
     :initarg       :input-field
@@ -42,50 +26,56 @@
 
 (defmethod initialize-instance :after ((ui user-interface) &key)
   "Initialize the window and field objects that are part of the user interface."
-  (with-slots (main-screen input-window status-window output-window input-field) ui
-    (setf main-screen   (make-instance 'crt:screen
-                                       :input-echoing nil
-                                       :input-buffering nil
-                                       :process-control-chars t
-                                       :cursor-visible t
-                                       :enable-colors nil
-                                       :enable-function-keys t)
-          output-window (make-instance 'crt:window
-                                       :height (- (crt:height main-screen) 2)
-                                       :width (crt:width main-screen)
-                                       :position '(0 0)
-                                       :enable-scrolling t)
-          status-window (make-instance 'crt:window
-                                       :height 1
-                                       :width (crt:width main-screen)
-                                       :position (list (- (crt:height main-screen) 2) 0))
-          input-window  (make-instance 'crt:window
-                                       :height 1
-                                       :width (crt:width main-screen)
-                                       :position (list (1- (crt:height main-screen)) 0)
-                                       :enable-function-keys t)
-          input-field   (make-instance 'crt:field
-                                       :position (list 0 0)
-                                       :width (crt:width main-screen)
-                                       :window input-window
-                                       :style (list :foreground nil :background nil)
-                                       :keymap 'girc-input-map
-                                       ;; poll the server and update the display 10 times per second.
-                                       :frame-rate 10))
-    ;; format the status line
-    (setf (crt:background status-window) (make-instance 'crt:complex-char :simple-char #\- :attributes '(:reverse)))
-    (refresh ui)))
+  (with-slots (main-screen layout input-field) ui
+    (setf main-screen (make-instance 'crt:screen
+                                     :input-echoing nil
+                                     :input-buffering nil
+                                     :process-control-chars t
+                                     :cursor-visible t
+                                     :enable-colors nil
+                                     :enable-function-keys t))
+    (setf layout (make-instance 'crt:column-layout :parent main-screen :children
+                                (list (list 'crt:window :name :topic :height 1)
+                                      (list 'crt:window :name :output)
+                                      (list 'crt:window :name :status :height 1)
+                                      (list 'crt:window :name :input :height 1 :enable-function-keys t))))
+    ;; calc window positions and dimensions
+    (crt:calculate-layout layout)
+    ;; make window objects
+    (crt:initialize-leaves layout)
+    (setf input-field (make-instance 'crt:field
+                                     :position (list 0 0)
+                                     :width (crt:width main-screen)
+                                     :window (find :input (crt:leaves layout) :key #'crt:name)
+                                     :style (list :foreground nil :background nil)
+                                     :keymap 'girc-input-map
+                                     ;; poll the server and update the display 10 times per second.
+                                     :frame-rate 10))
+    ;; reverse the status line
+    (setf (crt:background (find :status (crt:leaves layout) :key #'crt:name))
+          (make-instance 'crt:complex-char :simple-char #\- :attributes '(:reverse)))))
+
+(defparameter *ui* nil "Global variable holding an instance of the user interface.")
+
+(defun topic-window (ui)
+  (find :topic (crt:leaves (layout ui)) :key #'crt:name))
+
+(defun output-window (ui)
+  (find :output (crt:leaves (layout ui)) :key #'crt:name))
+
+(defun status-window (ui)
+  (find :status (crt:leaves (layout ui)) :key #'crt:name))
+
+(defun input-window (ui)
+  (find :input (crt:leaves (layout ui)) :key #'crt:name))
 
 (defmethod refresh ((ui user-interface) &rest args)
-  (with-slots (main-screen input-window status-window output-window input-field) ui
-    (crt:refresh input-window)
-    (crt:refresh status-window)
-    (crt:refresh output-window)))
+  (with-slots (layout) ui
+    (mapc #'crt:touch (crt:leaves layout))
+    (mapc #'crt:refresh (crt:leaves layout))))
 
 (defun finalize-user-interface (ui)
   "Cleanly free ncurses object memory."
-  (with-slots (input-window status-window output-window) ui
-    (close input-window)
-    (close status-window)
-    (close output-window)
+  (with-slots (layout) ui
+    (mapc #'close (crt:leaves layout))
     (crt:end-screen)))

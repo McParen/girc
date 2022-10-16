@@ -57,12 +57,14 @@
   (with-accessors ((buf crt:current-item)) *buffers*
     (crt:select-previous-item *buffers*)
     (setf (changedp buf) t) ;; flag current buffer for redisplay
+    (update-topic)
     (update-status)))
 
 (defun select-next-buffer ()
   (with-accessors ((buf crt:current-item)) *buffers*
     (crt:select-next-item *buffers*)
     (setf (changedp buf) t)
+    (update-topic)
     (update-status)))
 
 (defun select-last-buffer ()
@@ -148,27 +150,48 @@ or the display function can be used which allows format controls."
            ;; lists of strings of max width w to be displayed in the window
            (scrlines ())
            ;; number of lines to display
-           (n 0))
+           n)
       (dolist (ln lines)
-        (dolist (item (if (> (length ln) w)
+        (dolist (items (if (> (length ln) w)
                           ;; if a buffer line is wider than the window,
                           ;; split it into mutiple lines
                           (reverse (crt:split-lines (crt:wrap-string ln w)))
                           (list ln)))
           ;; lines are displayed in the reversed order, oldest first, newest last
-          (push item scrlines)
-          (incf n)
-          (when (= n h) (go end)))
-        end)
+          (push items scrlines)))
       (crt:clear win)
       (crt:move win 0 0)
-      (dolist (ln scrlines)
+      (if (>= (length scrlines) h)
+          (setq n h)
+          (setq n (length scrlines)))
+      (dolist (ln (last scrlines n))
         (fresh-line win)
         (princ ln win))
       ;; causes flicker
       (crt:refresh win))
     ;; after the changes have been displayed, set the flag to nil
     (setf changedp nil)))
+
+(defun update-topic ()
+  "Display the current buffer channel topic, if available."
+  (let ((win (input-window *ui*))
+        (wtp (topic-window *ui*)))
+    (if (target (current-buffer))
+        (let* ((chan (find (target (current-buffer))
+                           (channels (connection (current-buffer)))
+                           :key #'name :test #'string=))
+               (text (when chan (topic chan))))
+          (crt:save-excursion win
+            (crt:clear wtp)
+            (when text
+              (if (> (length text) (crt:width wtp))
+                  (crt:add-string wtp (subseq text 0 (crt:width wtp)))
+                  (crt:add-string wtp text))
+              (crt:refresh wtp))))
+        ;; if target is nil, clear the topic line (in a server buffer)
+        (crt:save-excursion win
+          (crt:clear wtp)
+          (crt:refresh wtp)))))
 
 (defun update-output ()
   "If the current buffer has been changed, update the output window."

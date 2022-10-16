@@ -86,6 +86,12 @@
     :type          (or null cons)
     :documentation "List of nicknames in a channel.")
 
+   (topic
+    :initform      nil
+    :accessor      topic
+    :type          (or null string)
+    :documentation "Topic of the channel.")
+
    (rpl-namreply-started-p
     :initform      nil
     :type          boolean

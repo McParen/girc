@@ -37,6 +37,15 @@
   ;; process-server-input then should just take read messages from the thread queue
   (nil 'handle-server-input)
 
+  (:resize (lambda ()
+             (crt:calculate-layout (layout *ui*))
+             (setf (changedp (current-buffer)) t
+                   (crt:width (input-field *ui*)) (crt:width (input-window *ui*)))
+             (update-topic)
+             (update-output)
+             (update-status)
+             (refresh *ui*)))
+
   ;; command.lisp
   (#\newline 'handle-user-command)
 
@@ -65,6 +74,7 @@
                              (finalize-user-interface *ui*)
                              (print c))))
     (setq *ui* (make-instance 'user-interface))
+    (refresh *ui*)
     (update-status)
     ;; run the main event loop on the input field
     (crt:edit (input-field *ui*))
