@@ -51,7 +51,9 @@
                                      :keymap 'girc-input-map
                                      ;; poll the server and update the display 10 times per second.
                                      :frame-rate 10))
-    ;; reverse the status line
+    ;; reverse the display of the topic and the status line
+    (setf (crt:background (find :topic (crt:leaves layout) :key #'crt:name))
+          (make-instance 'crt:complex-char :simple-char #\space :attributes '(:reverse)))
     (setf (crt:background (find :status (crt:leaves layout) :key #'crt:name))
           (make-instance 'crt:complex-char :simple-char #\- :attributes '(:reverse)))))
 

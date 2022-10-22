@@ -6,10 +6,17 @@
   (destructuring-bind (cmd . args) (parse-user-input input)
     (crt:save-excursion (input-window *ui*)
       (if cmd
-          (let ((fun (fboundp (find-symbol (string-upcase cmd) 'de.anvi.girc.command))))
-            (if fun
-                (apply fun (parse-user-arguments (sb-introspect:function-lambda-list fun) args))
-                ;; if no handler was found, use the default handler
+          (multiple-value-bind (symbol status)
+              (find-symbol (string-upcase cmd) 'de.anvi.girc.command)
+            (if (and symbol
+                     (eq status :external))
+                (let* ((fun (fboundp symbol)))
+                  (if fun
+                      (apply fun (parse-user-arguments (sb-introspect:function-lambda-list fun) args))
+                      ;; if no handler was found, use the default handler
+                      (funcall (lambda (cmd args)
+                                 (display t "-!- Undefined command: ~A ~A" cmd args))
+                               cmd args)))
                 (funcall (lambda (cmd args)
                            (display t "-!- Undefined command: ~A ~A" cmd args))
                          cmd args)))
