@@ -138,23 +138,38 @@ Bound to #\newline in girc-input-map."
          ;; if no command is given
          (display-info)))))
 
-;; /server add <name> <host> <nick>
+;; /server add <name> <host> <nick> [port] [ssl]
 ;; /server add freenode irc.freenode.net haom
+;; /server add freenode irc.freenode.net haom 6697 ssl
 ;; /server list
-(defun server (cmd name host nick)
+(defun server (cmd name host nick &optional port ssl)
   (alexandria:switch (cmd :test #'string=)
     ("add"
-     (if (and name nick host)
-         (push (make-instance 'connection :name name :nickname nick :hostname host) *connections*)
-         (echo t "-!- Required arguments: /server add <name> <host> <nick>")))
+     (if (and name host nick)
+         ;; if the optional keyword "ssl" is passed, a secure ssl/tls connection is enabled.
+         ;; for a ssl connection, a ssl port has to be given.
+         (let ((conn (if port
+                         (make-instance 'connection :name name
+                                                    :nickname nick
+                                                    :hostname host
+                                                    :port (parse-integer port)
+                                                    :ssl (if (string= ssl "ssl") t nil))
+                         (make-instance 'connection :name name
+                                                    :hostname host
+                                                    :nickname nick))))
+
+           (push conn *connections*))
+         (echo t "-!- Required arguments: /server add <name> <host> <nick> [port] [ssl]")))
     ("list"
-     (echo t "Network" "Host" "Nick" "Connected" "Channels")
+     (echo t "Name" "Host" "Nick" "Port" "SSL" "Connected" "Channels")
      (when *connections*
        (dolist (c *connections*)
          (echo t
                (name c)
-               (nickname c)
                (hostname c)
+               (nickname c)
+               (port c)
+               (sslp c)
                (connectedp c)
 
                ;; list channels of the connection

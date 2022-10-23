@@ -34,6 +34,8 @@
    nickname
    nicknames
    hostname
+   port
+   sslp
    display-info
    *connections*
    channel
@@ -74,6 +76,8 @@
    nickname
    nicknames
    hostname
+   port
+   sslp
    display-info
    *connections*
    channel

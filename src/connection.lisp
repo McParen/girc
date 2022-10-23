@@ -8,7 +8,7 @@
     :initform      nil
     :accessor      name
     :type          (or null string)
-    :documentation "Name by which to refer to the connection, for example the name of the IRC network.")
+    :documentation "Unique name by which to refer to the connection, for example the network.")
 
    (hostname
     :initarg       :hostname
@@ -23,6 +23,20 @@
     :accessor      port
     :type          integer
     :documentation "Port to which the server connection is established.")
+
+   ;; Requires the foreign library libssl.so has to be available on the system.
+   (sslp
+    :initarg       :ssl
+    :initform      nil
+    :accessor      sslp
+    :type          boolean
+    :documentation
+    "Set to t to enable a secure SSL/TLS connection to the server.
+
+When SSL is enabled, the user mode Z is set, and the numeric reply 671
+:rpl-whoissecure is returned by whois:
+
+<nick> is using a secure connection [TLSv1.3, TLS_AES_256_GCM_SHA384]")
 
    (socket
     :initform      nil
@@ -105,9 +119,14 @@ by rpl-endofnames (366)."))
 
 (defun connect (connection)
   "Connect a socket to the host of the connection and register a nickname."
-  (with-slots (socket stream hostname port nickname username realname connectedp) connection
+  (with-slots (socket stream hostname port nickname username realname connectedp sslp) connection
     (setf socket (usocket:socket-connect hostname port :element-type '(unsigned-byte 8))
-          stream (usocket:socket-stream socket)
+          stream (if sslp
+                     ;; to enable ssl, we wrap the simple stream into an encrypted ssl stream.
+                     (cl+ssl:make-ssl-client-stream (usocket:socket-stream socket)
+                                                    :hostname hostname
+                                                    :verify t)
+                     (usocket:socket-stream socket))
           connectedp t)
     (register connection nickname 0 username realname)))
 
