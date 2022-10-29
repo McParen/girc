@@ -58,6 +58,7 @@
     (crt:select-previous-item *buffers*)
     (setf (changedp buf) t) ;; flag current buffer for redisplay
     (update-topic)
+    (update-output)
     (update-status)))
 
 (defun select-next-buffer ()
@@ -65,6 +66,7 @@
     (crt:select-next-item *buffers*)
     (setf (changedp buf) t)
     (update-topic)
+    (update-output)
     (update-status)))
 
 (defun select-last-buffer ()

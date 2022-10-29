@@ -6,6 +6,9 @@
   "Give the user a new nickname during registration or change the existing one."
   (send connection :nick (list nickname) nil))
 
+(defun pass (connection password)
+  (send connection :pass (list password) nil))
+
 (defun pong (connection text)
   "Send a PONG command with the appropriate response text."
   (send connection :pong nil text))
@@ -19,15 +22,19 @@
 The server acknowledges this by sending an ERROR message to the client."
   (send connection :quit nil quit-message))
 
-;; not an irc command, but user and nick are
-(defun register (connection nickname mode username realname)
+;; register is not an irc command, but pass, user and nick are.
+(defun register (connection)
   "Register a connection to an irc server with a nickname and a username.
 
 This is the first command that should be sent after a connection is established.
 
 Upon success, the server will reply with a 001 RPL_WELCOME message."
-  (nick connection nickname)
-  (user connection username mode realname))
+  (with-slots (nickname username realname server-password) connection
+    (let ((mode 0))
+      (when server-password
+        (pass connection server-password))
+      (nick connection nickname)
+      (user connection username mode realname))))
 
 ;; "USER ~A 0 0 :~A"
 (defun user (connection username mode realname)

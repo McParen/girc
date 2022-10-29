@@ -72,6 +72,50 @@ When SSL is enabled, the user mode Z is set, and the numeric reply 671
     :type          (or null string)
     :documentation "Realname of the user to be registered with the connected server.")
 
+   (server-password
+    :initarg       :server-password
+    :initform      nil
+    :accessor      server-password
+    :type          (or null string)
+    :documentation "Connection password used to connect to the server.
+
+Generally, this is different than the NickServ password. Some networks (notably
+Libera) forward the connection password to NickServ identify if it is given in
+the form nickname:password.
+
+This client will send the NickServ login credentials as the server password if
+the login-method is set to :pass, which is currently the default.")
+
+   (nickserv-account
+    :initarg       :nickserv-account
+    :initform      nil
+    :accessor      nickserv-account
+    :type          (or null string)
+    :documentation "")
+
+   (nickserv-password
+    :initarg       :nickserv-password
+    :initform      nil
+    :accessor      nickserv-password
+    :type          (or null string)
+    :documentation "")
+
+   (login-method
+    :initarg       :login-method
+    :initform      :pass
+    :accessor      login-method
+    :type          (or null keyword)
+    :documentation
+    "Keyword describing the method to perform the login to NickServ.
+
+The following login methods are available:
+
+nil    The client will not login to NickServ automatically
+:pass  The login credentials are passed as server-password during registration")
+
+;; :msg   The login is performed as /msg nickserv identify nickname password
+;; :sasl  The login is performed by the SASL protocol if supported by the server"
+
    (connectedp
     :initform      nil
     :accessor      connectedp
@@ -85,6 +129,24 @@ When SSL is enabled, the user mode Z is set, and the numeric reply 671
     :documentation "List of joined channels."))
 
   (:documentation "Parameters necessary to establish a connection to an IRC server."))
+
+(defmethod initialize-instance :after ((obj connection) &key nickserv)
+  (with-slots (nickserv-account nickserv-password login-method server-password) obj
+    ;; if the nickserv login is given in the form account:password,
+    ;; parse the account and the passwort
+    (when (and nickserv
+               (null nickserv-account)
+               (null nickserv-password))
+      (destructuring-bind (acct pass)
+          (split-sequence:split-sequence #\: nickserv)
+        (setf nickserv-account acct
+              nickserv-password pass)))
+    ;; if the login-method is :pass, make account:password the server password
+    (when (and (null server-password)
+               nickserv-account
+               nickserv-password
+               (eq login-method :pass))
+      (setf server-password (format nil "~A:~A" nickserv-account nickserv-password)))))
 
 (defclass channel ()
   ((name
@@ -119,7 +181,7 @@ by rpl-endofnames (366)."))
 
 (defun connect (connection)
   "Connect a socket to the host of the connection and register a nickname."
-  (with-slots (socket stream hostname port nickname username realname connectedp sslp) connection
+  (with-slots (socket stream hostname port connectedp sslp) connection
     (setf socket (usocket:socket-connect hostname port :element-type '(unsigned-byte 8))
           stream (if sslp
                      ;; to enable ssl, we wrap the simple stream into an encrypted ssl stream.
@@ -128,7 +190,7 @@ by rpl-endofnames (366)."))
                                                     :verify t)
                      (usocket:socket-stream socket))
           connectedp t)
-    (register connection nickname 0 username realname)))
+    (register connection)))
 
 (defun disconnect (connection)
   "Cleanly close the socket of the connection."
@@ -262,8 +324,8 @@ Bound to nil in girc-input-map."
                     (crt:save-excursion (input-window *ui*)
                       ;; message handline writes to the screen, so it has to happen in the main thread
                       (handle-message rawmsg con))) ; see event.lisp
-                (echo (buffer con) "-!- Not a valid IRC message (missing CRLF ending)")))))))
-  (update-output))
+                (echo (buffer con) "-!- Not a valid IRC message (missing CRLF ending)"))))))
+    (update-output)))
 
 (defun find-connection (name)
   "Return the connection object associated with the given connection name."

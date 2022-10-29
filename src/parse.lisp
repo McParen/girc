@@ -258,7 +258,45 @@ Called from handle-user-command."
   ;; returns nil, or an empty list
   (format t "8.~A "
           (equalp (parse-user-arguments '() "foo bar baz")
-                  nil)))
+                  nil))
+  ;; 9. keyword parameters
+  ;; the &rest keyword HAS to be used together with the &key keyword.
+  ;; instead of returning all rest args in a single string, when the &key
+  ;; keyword is present in the lambda list, the args are returned as :k v :k v
+  (format t "9.~A "
+          (equalp (parse-user-arguments '(a b &rest c &key d e f) "a b :c 1 :d 2")
+                  (list "a" "b" :C "1" :D "2")))
+  ;; 10. the same as 9. but without they &key keyword.
+  ;; here again the rest is returned in a single string.
+  (format t "10.~A "
+          (equalp (parse-user-arguments '(a b &rest c) "a b :c 1 :d 2")
+                  (list "a" "b" ":c 1 :d 2")))
+  ;; 11. the same as 9 bit without the &rest keyword
+  (format t "11.~A "
+          (equalp (parse-user-arguments '(a b &key d e f) "a b :c 1 :d 2")
+                  (list "a" "b" :C "1" :D "2")))
+  ;; 12. only keyword args, no required args
+  (format t "12.~A "
+          (equalp (parse-user-arguments '(&key d e f) ":c 1 :d 2")
+                  (list :C "1" :D "2"))))
+
+;; (parse-keyword-args ":a 1 :b 22 :c hello :d nil :e t")
+;; => (:A 1 :B 22 :C "hello" :D NIL :E T)
+(defun parse-keyword-args (args)
+  "Take a string with keyword arguments, parse it to a lisp list.
+
+Recognized objects are keywords, integers, t and nil. Everyting else
+is left as a string."
+  (when args
+    (loop for i in (split-sequence:split-sequence #\space args)
+          if (char= (char i 0) #\:)
+            collect (intern (subseq (string-upcase i) 1) :keyword)
+          else if (or (string= i "t") (string= i "nil"))
+            collect (read-from-string i)
+          else if (every #'digit-char-p i)
+            collect (parse-integer i)
+          else
+            collect i)))
 
 (defun parse-user-arguments (lbd str)
   "Take a string and a lambda list, return a list of destructured tokens.
@@ -272,15 +310,22 @@ arguments in a single string.
 If there are more parameters than string tokens, nil will be returned
 for each."
   (let* ((restp (member '&rest lbd))
-         ;; list of required (and optional) arguments
+         (keyp (member '&key lbd))
+         (optp (member '&optional lbd))
+         ;; remove the key keyword and all arguments.
+         (lbd1 (if keyp
+                   (subseq lbd 0 (position '&key lbd))
+                   lbd))
+         ;; remove &rest and the rest arg
+         (lbd2 (if restp
+                   (subseq lbd1 0 (position '&rest lbd1))
+                   lbd1))
          ;; all arguments are optional anyway, remove the &optional keyword.
          ;; we still can mark args optional, but this only affects the
          ;; function when it is called from lisp.
-         (req (remove '&optional
-                      (if restp
-                          ;; remove &rest and the rest arg
-                          (subseq lbd 0 (position '&rest lbd))
-                          lbd)))
+         (req (if optp
+                  (remove '&optional lbd2)
+                  lbd2))
          ;; number of required (and optional) arguments
          (nreq (length req)))
     (multiple-value-bind (reqs pos)
@@ -289,21 +334,25 @@ for each."
         ;; pos = end of nth arg
         (split-sequence:split-sequence #\space str :count nreq)
       ;; if there are no args, split-sequence returns an empty string, but we want nil
-      (let ((reqs (if (and (= (length reqs) 1)        ; a list with one empty string
-                           (= (length (car reqs)) 0)) ; empty string = length 0
-                      ;; use nil instead of one empty string
-                      nil
-                      reqs))
-            ;; if the rest string is empty
-            (rest (if (= 0 (length (subseq str pos)))
-                      ;; return nil in its place.
-                      nil
-                      ;; if there is a rest, put them all in one string.
-                      (subseq str pos))))
-        (if restp
+      (let* ((reqs (if (and (= (length reqs) 1)        ; a list with one empty string
+                            (= (length (car reqs)) 0)) ; empty string = length 0
+                       ;; use nil instead of one empty string
+                       nil
+                       reqs))
+             ;; if the rest string is empty
+             (rest-string (if (= 0 (length (subseq str pos)))
+                              ;; return nil in its place.
+                              nil
+                              ;; if there is a rest, put them all in one string.
+                              (subseq str pos)))
+             ;; if &key was given, parse the rest into keyword args
+             (rest (if keyp
+                       (parse-keyword-args rest-string)
+                       (list rest-string))))
+        (if (or restp keyp)
             (if (> nreq (length reqs))
-                (append reqs (make-list (- nreq (length reqs))) (list rest))
-                (append reqs (list rest)))
+                (append reqs (make-list (- nreq (length reqs))) rest)
+                (append reqs rest))
             (if (> nreq (length reqs))
                 (append reqs (make-list (- nreq (length reqs))))
                 reqs))))))

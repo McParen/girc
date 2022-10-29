@@ -138,28 +138,29 @@ Bound to #\newline in girc-input-map."
          ;; if no command is given
          (display-info)))))
 
-;; /server add <name> <host> <nick> [port] [ssl]
+;; /server add <name> <host> <nick> [:port] [:ssl] [:nickserv]
 ;; /server add freenode irc.freenode.net haom
 ;; /server add freenode irc.freenode.net haom 6697 ssl
 ;; /server list
-(defun server (cmd name host nick &optional port ssl)
+(defun server (cmd name host nick &key port ssl nickserv)
   (alexandria:switch (cmd :test #'string=)
     ("add"
      (if (and name host nick)
-         ;; if the optional keyword "ssl" is passed, a secure ssl/tls connection is enabled.
-         ;; for a ssl connection, a ssl port has to be given.
+         ;; if the optional keyword ssl is passed, a secure ssl/tls connection is enabled.
+         ;; for a ssl connection, a ssl port has to be given, mostly 6697.
          (let ((conn (if port
                          (make-instance 'connection :name name
                                                     :nickname nick
                                                     :hostname host
-                                                    :port (parse-integer port)
-                                                    :ssl (if (string= ssl "ssl") t nil))
+                                                    :port port
+                                                    :ssl ssl
+                                                    :nickserv nickserv)
                          (make-instance 'connection :name name
                                                     :hostname host
-                                                    :nickname nick))))
-
+                                                    :nickname nick
+                                                    :nickserv nickserv))))
            (push conn *connections*))
-         (echo t "-!- Required arguments: /server add <name> <host> <nick> [port] [ssl]")))
+         (echo t "-!- Required arguments: /server add <name> <host> <nick> [:port] [:ssl] [:nickserv]")))
     ("list"
      (echo t "Name" "Host" "Nick" "Port" "SSL" "Connected" "Channels")
      (when *connections*
