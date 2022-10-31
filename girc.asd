@@ -12,6 +12,7 @@
 
   ((:file "package")
    (:file "global")
+   (:file "utils")
    (:file "parse")
    (:file "ui")
    (:file "buffer")

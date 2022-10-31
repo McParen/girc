@@ -260,7 +260,6 @@ Called from handle-user-command."
           (equalp (parse-user-arguments '() "foo bar baz")
                   nil))
   ;; 9. keyword parameters
-  ;; the &rest keyword HAS to be used together with the &key keyword.
   ;; instead of returning all rest args in a single string, when the &key
   ;; keyword is present in the lambda list, the args are returned as :k v :k v
   (format t "9.~A "

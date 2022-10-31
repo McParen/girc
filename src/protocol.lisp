@@ -2,6 +2,18 @@
 
 ;;; Implementation of IRC protocol commands and supporting functions.
 
+;; AUTHENTICATE PLAIN
+;; AUTHENTICATE <base64-token
+;; AUTHENTICATE *
+(defun authenticate (connection arg)
+  (send connection :authenticate (list arg)))
+
+;; CAP LS
+;; CAP REQ :sasl
+;; CAP END
+(defun cap (connection subcommand &optional text)
+  (send connection :cap (list subcommand) text))
+
 (defun nick (connection nickname)
   "Give the user a new nickname during registration or change the existing one."
   (send connection :nick (list nickname) nil))

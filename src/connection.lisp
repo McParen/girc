@@ -77,7 +77,8 @@ When SSL is enabled, the user mode Z is set, and the numeric reply 671
     :initform      nil
     :accessor      server-password
     :type          (or null string)
-    :documentation "Connection password used to connect to the server.
+    :documentation
+    "Connection password used to connect to the server.
 
 Generally, this is different than the NickServ password. Some networks (notably
 Libera) forward the connection password to NickServ identify if it is given in
@@ -102,7 +103,7 @@ the login-method is set to :pass, which is currently the default.")
 
    (login-method
     :initarg       :login-method
-    :initform      :pass
+    :initform      :nil
     :accessor      login-method
     :type          (or null keyword)
     :documentation
@@ -111,10 +112,8 @@ the login-method is set to :pass, which is currently the default.")
 The following login methods are available:
 
 nil    The client will not login to NickServ automatically
+:sasl  The login is performed by the SASL protocol if supported by the server
 :pass  The login credentials are passed as server-password during registration")
-
-;; :msg   The login is performed as /msg nickserv identify nickname password
-;; :sasl  The login is performed by the SASL protocol if supported by the server"
 
    (connectedp
     :initform      nil
@@ -181,7 +180,7 @@ by rpl-endofnames (366)."))
 
 (defun connect (connection)
   "Connect a socket to the host of the connection and register a nickname."
-  (with-slots (socket stream hostname port connectedp sslp) connection
+  (with-slots (socket stream hostname port connectedp sslp nickserv-account nickserv-password login-method) connection
     (setf socket (usocket:socket-connect hostname port :element-type '(unsigned-byte 8))
           stream (if sslp
                      ;; to enable ssl, we wrap the simple stream into an encrypted ssl stream.
@@ -190,6 +189,13 @@ by rpl-endofnames (366)."))
                                                     :verify t)
                      (usocket:socket-stream socket))
           connectedp t)
+    (when (and nickserv-account
+               nickserv-password
+               (eq login-method :sasl))
+      ;; To enable SASL, an IRCv3 capability negotiation has to be initialized first by CAP LS.
+      ;; It has to be finalized with CAP END, which is sent by the rpl-saslsuccess (903) handler.
+      (cap connection "LS"))
+    ;; registration (nick, user)
     (register connection)))
 
 (defun disconnect (connection)

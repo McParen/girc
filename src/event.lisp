@@ -1,7 +1,7 @@
 (in-package :de.anvi.girc)
 
 (defparameter *irc-commands*
-  '("ERROR" "JOIN" "KICK" "MODE" "NICK" "NOTICE" "PART" "PING" "PRIVMSG" "QUIT" "TOPIC")
+  '("ERROR" "JOIN" "KICK" "MODE" "NICK" "NOTICE" "PART" "PING" "PRIVMSG" "QUIT" "TOPIC" "CAP" "AUTHENTICATE")
   "Commands a client can receive from the server.")
 
 ;; TODO: (every #'digit-char-p string)
@@ -120,6 +120,59 @@ For now, the raw irc message will simply be displayed in the output window."
 ;; then we add the pre-defined handlers to events.
 
 (bind-event t 'default-event-handler)
+
+;; Syntax: CAP <user> <subcommand> :<args>
+;; Syntax: CAP * LS :<caps>
+;; Syntax: CAP * ACK :<caps>
+;; Comment: Response to CAP LS
+;; Example: :calcium.libera.chat CAP * LS :account-notify away-notify chghost extended-join multi-prefix sasl tls ...
+;; Example: :osmium.libera.chat CAP haom ACK :sasl
+;; Example: :calcium.libera.chat CAP * ACK :sasl
+(define-event cap (msg buffer connection params text)
+  (destructuring-bind (user subcommand) params
+    (alexandria:switch (subcommand :test #'string=)
+      ("LS"
+       (let ((available (split-sequence:split-sequence #\space text :remove-empty-subseqs t)))
+         (if (and available
+                  (member "sasl" available :test #'string=))
+             ;; SASL capability available, proceed with request.
+             ;; If enabled, replied with CAP ACK.
+             (cap connection "REQ" "sasl")
+             (echo buffer "-!- SASL capability not supported by server"))))
+      ("ACK"
+       (let ((enabled (split-sequence:split-sequence #\space text :remove-empty-subseqs t)))
+         (if (and enabled
+                  (member "sasl" enabled :test #'string=))
+             ;; SASL capability enabled, proceed with authentication request.
+             ;; If successful, replied with a AUTHENTICATE + prompt for the base64 auth token.
+             (authenticate connection "PLAIN")
+             (echo buffer "-!- Requested SASL capability not enabled.")))))))
+
+;; Client: AUTHENTICATE PLAIN
+;; Server: AUTHENTICATE +
+;; The event handler of AUTHENTICATE sends the base64-encoded sasl plain token
+;; Client: AUTHENTICATE Kj3TjdlfkjsljLKJWI109u31==
+(define-event authenticate (msg buffer rawmsg connection params)
+  (destructuring-bind (arg) params
+    ;; The AUTHENTICATE + event prompts for the base64-encoded sasl auth token.
+    (when (string= arg "+")
+      (with-slots ((nick nickserv-account)
+                   (pass nickserv-password)) connection
+        (authenticate connection (base64-encode-string (sasl-plain-token nick nick pass)))))))
+
+;; Commend: Response to a nickServ login, whether by msg, pass or sasl.
+;; Syntax:  :server 900 <nick> <nick>!<ident>@<host> <account> :You are now logged in as <user>
+;; Example: :osmium.libera.chat 900 haom haom!myuser@user/mcparen BigusNickus :You are now logged in as BigusNickus
+(define-event rpl-loggedin (msg buffer text)
+  (echo buffer "***" text))
+
+;; Comment: If SASL auth is successful, server replies with rpl-saslsuccess (603).
+;;          The handler must close the capability negotiation with CAP END.
+;; Example: :sodium.libera.chat 903 BigusNickus :SASL authentication successful
+(define-event rpl-saslsuccess (msg prefix-nick buffer connection params text)
+  (destructuring-bind (nick) params
+    (echo buffer "***" text)
+    (cap connection "END")))
 
 ;; Event:   JOIN
 ;; Syntax:  :<prefix> JOIN :<channel>

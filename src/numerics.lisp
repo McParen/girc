@@ -33,4 +33,6 @@
     (375 . :rpl-motdstart)
     (376 . :rpl-endofmotd)
     (378 . :rpl-whoishost)
-    (671 . :rpl-whoissecure)))
+    (671 . :rpl-whoissecure)
+    (900 . :rpl-loggedin)
+    (903 . :rpl-saslsuccess)))
