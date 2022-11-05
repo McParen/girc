@@ -217,7 +217,7 @@ or the display function can be used which allows format controls."
                       (when (and nick name)
                         (format str "[~A ()] [~A" nick name))
                       ;; default placeholders
-                      (format str "[~A ()] [~A" :nick :network))
+                      (format str "[~A ()] [~A" :nick :server))
                   ;; if the current target is a channel, add it after the network
                   (if (target (current-buffer))
                       (format str "/~A ()]" (target (current-buffer)))

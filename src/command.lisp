@@ -180,8 +180,8 @@ Bound to #\newline in girc-input-map."
                ;; list channels of the connection
                (when (connectedp c)
                  (format nil "~{~A~^ ~}"
-                         (if (channels (connection (current-buffer)))
-                             (mapcar #'name (channels (connection (current-buffer))))
+                         (if (channels c)
+                             (mapcar #'name (channels c))
                              nil)))))))
     (t
      (if cmd
@@ -225,6 +225,11 @@ Bound to #\newline in girc-input-map."
 (defun msg (target &rest text)
   (display t "~A @ ~A: ~A" (nickname (connection (current-buffer))) target (car text))
   (send t :privmsg (list target) (car text)))
+
+;; /nick new-nick
+;; The changes to the client settings happen when the server replies.
+(defun nick (new-nick)
+  (send t :nick (list new-nick)))
 
 ;; /say hello there dear john
 (defun say (&rest text)

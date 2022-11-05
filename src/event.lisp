@@ -191,7 +191,7 @@ For now, the raw irc message will simply be displayed in the output window."
 ;; :kornbluth.freenode.net NOTICE * :*** Looking up your hostname...
 ;; :kornbluth.freenode.net NOTICE * :*** Checking Ident
 ;; :kornbluth.freenode.net NOTICE * :*** Found your hostname
-(define-event notice (msg buffer command text)
+(define-event notice (msg buffer text)
   (echo buffer text))
 
 ;; Syntax: :<prefix> PART <channel> :<reason>
@@ -209,14 +209,27 @@ For now, the raw irc message will simply be displayed in the output window."
         (echo buffer "***" prefix-nick "left" channel))))
 
 ;; Event:   NICK
+;; Syntax:  :<prefix> NICK <old-nick> :<new-nick>
 ;; Example: :_vanessa_!~farawayas@user/farawayastronaut NICK :vaness
 ;; Example: :ohokthen!~igloo@172.58.165.154 NICK :FarMoreSinister
-(define-event nick (msg prefix-nick connection text)
+;; Example: :haom!~myuser@ip-22-111.un55.pool.myip.com NICK :haoms
+(define-event nick (msg buffer rawmsg prefix-nick prefix-user connection text)
+  ;; if it is your own nick
+  (when (string= prefix-nick (nickname connection))
+    ;; update the client
+    (setf (nickname connection) text)
+    ;; display the change to the server buffer
+    (display buffer "*** You are now known as ~A" text)
+    ;; update the status line
+    (update-status))
+  ;; display the change to chans where the nick is present
   (dolist (buffer (crt:items *buffers*))
     (when (and (eq connection (connection buffer))
                (target buffer)
                (member prefix-nick
-                       (nicknames (find (target buffer) (channels (connection buffer)) :key #'name :test #'string=))
+                       (nicknames (find (target buffer)
+                                        (channels (connection buffer))
+                                        :key #'name :test #'string=))
                        :test #'string=))
       (if text
           (display buffer "*** ~A is now known as ~A" prefix-nick text)
@@ -443,6 +456,7 @@ For now, the raw irc message will simply be displayed in the output window."
 
 ;;; MODE
 
+;; :haom MODE haom :+Ziw
 ;; :irc.efnet.nl MODE #test +nt
 ;; :irc.efnet.nl 324 haom #test +tn
 ;; :irc.efnet.nl 329 haom #test 1598613944

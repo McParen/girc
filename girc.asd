@@ -1,6 +1,6 @@
 (asdf:defsystem #:girc
   :name "girc"
-  :description "Simple IRC client for the terminal"
+  :description "girc is a basic IRC client for the terminal."
   :author "Anton Vidovic <anton.vidovic@gmx.de>"
   :maintainer "Anton Vidovic"
   :licence "MIT"
@@ -27,7 +27,6 @@
 ;; (asdf:make :girc/build)
 ;; (asdf:operate :program-op :girc/build)
 ;; sbcl --eval "(asdf:make :girc/build)"
-
 (asdf:defsystem "girc/build"
   :depends-on ("girc")
   :build-operation program-op

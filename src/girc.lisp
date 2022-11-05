@@ -80,7 +80,9 @@
     (crt:edit (input-field *ui*))
     (finalize-user-interface *ui*)))
 
+;; requires libzstd.so to be available, produces an approx. 13 MB binary.
 ;; omitting executable t produces a core which has to be run with sbcl --core
+#+(and sbcl sb-core-compression)
 (defun build ()
   "Build the girc executable."
   (sb-ext:save-lisp-and-die "girc" :toplevel #'girc:run :executable t :compression 22))
