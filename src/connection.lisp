@@ -19,10 +19,14 @@
 
    (port
     :initarg       :port
-    :initform      6667
+    :initform      nil
     :accessor      port
-    :type          integer
-    :documentation "Port to which the server connection is established.")
+    :type          (or null integer)
+    :documentation
+    "Port to which the server connection is established.
+
+For a plaintext connection the default port is 6667, if SSL encryption
+is enabled, the port 6697 is used by default.")
 
    ;; Requires the foreign library libssl.so has to be available on the system.
    (sslp
@@ -103,7 +107,7 @@ the login-method is set to :pass, which is currently the default.")
 
    (login-method
     :initarg       :login-method
-    :initform      :nil
+    :initform      nil
     :accessor      login-method
     :type          (or null keyword)
     :documentation
@@ -130,7 +134,7 @@ nil    The client will not login to NickServ automatically
   (:documentation "Parameters necessary to establish a connection to an IRC server."))
 
 (defmethod initialize-instance :after ((obj connection) &key nickserv)
-  (with-slots (nickserv-account nickserv-password login-method server-password) obj
+  (with-slots (nickserv-account nickserv-password login-method server-password sslp port) obj
     ;; if the nickserv login is given in the form account:password,
     ;; parse the account and the passwort
     (when (and nickserv
@@ -145,7 +149,9 @@ nil    The client will not login to NickServ automatically
                nickserv-account
                nickserv-password
                (eq login-method :pass))
-      (setf server-password (format nil "~A:~A" nickserv-account nickserv-password)))))
+      (setf server-password (format nil "~A:~A" nickserv-account nickserv-password)))
+    ;; set the default port depending on the encryption
+    (setf port (if sslp 6697 6667))))
 
 (defclass channel ()
   ((name
@@ -332,6 +338,14 @@ Bound to nil in girc-input-map."
                       (handle-message rawmsg con))) ; see event.lisp
                 (echo (buffer con) "-!- Not a valid IRC message (missing CRLF ending)"))))))
     (update-output)))
+
+(defun add-connection (name host &rest args &key &allow-other-keys)
+  "Make and add a server object to the connection list.
+
+Required arguments are a short name by which to refer to the server
+and the hostname of the server."
+  (let ((conn (apply #'make-instance 'connection :name name :hostname host args)))
+    (push conn *connections*)))
 
 (defun find-connection (name)
   "Return the connection object associated with the given connection name."

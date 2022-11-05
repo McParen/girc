@@ -139,32 +139,19 @@ Bound to #\newline in girc-input-map."
          (display-info)))))
 
 ;; Syntax:
-;; /server add <name> <host> <nick> [:port] [:ssl] [:nickserv] [:login-method]
+;; /server add <name> <host> [:nickname] [:port] [:ssl] [:nickserv] [:login-method]
 ;; /server list
+;;
 ;; Examples:
-;; /server add freenode irc.freenode.net haom
-;; /server add freenode irc.freenode.net haom :port 6697 :ssl t :nickserv MyNick:MyPass :login-method :sasl
-(defun server (cmd name host nick &key port ssl nickserv login-method)
+;; /server add lib irc.libera.chat
+;; /server add freenode irc.freenode.net :nickname haom
+;; /server add freenode irc.freenode.net :nickname haom :port 6697 :ssl t :nickserv MyNick:MyPass :login-method :sasl
+(defun server (cmd name host &rest args &key &allow-other-keys)
   (alexandria:switch (cmd :test #'string=)
     ("add"
-     (if (and name host nick)
-         ;; if the optional keyword ssl is passed, a secure ssl/tls connection is enabled.
-         ;; for a ssl connection, a ssl port has to be given, mostly 6697.
-         (let ((conn (if port
-                         (make-instance 'connection :name name
-                                                    :nickname nick
-                                                    :hostname host
-                                                    :port port
-                                                    :ssl ssl
-                                                    :login-method login-method
-                                                    :nickserv nickserv)
-                         (make-instance 'connection :name name
-                                                    :hostname host
-                                                    :nickname nick
-                                                    :login-method login-method
-                                                    :nickserv nickserv))))
-           (push conn *connections*))
-         (echo t "-!- Required arguments: /server add <name> <host> <nick>")))
+     (if (and name host)
+         (apply #'add-connection name host args)
+         (echo t "-!- Required arguments: /server add <name> <host>")))
     ("list"
      (echo t "Name" "Host" "Nick" "Port" "SSL" "Connected" "Channels")
      (when *connections*

@@ -264,7 +264,7 @@ Called from handle-user-command."
   ;; keyword is present in the lambda list, the args are returned as :k v :k v
   (format t "9.~A "
           (equalp (parse-user-arguments '(a b &rest c &key d e f) "a b :c 1 :d 2")
-                  (list "a" "b" :C "1" :D "2")))
+                  (list "a" "b" :C 1 :D 2)))
   ;; 10. the same as 9. but without they &key keyword.
   ;; here again the rest is returned in a single string.
   (format t "10.~A "
@@ -273,11 +273,11 @@ Called from handle-user-command."
   ;; 11. the same as 9 bit without the &rest keyword
   (format t "11.~A "
           (equalp (parse-user-arguments '(a b &key d e f) "a b :c 1 :d 2")
-                  (list "a" "b" :C "1" :D "2")))
+                  (list "a" "b" :C 1 :D 2)))
   ;; 12. only keyword args, no required args
   (format t "12.~A "
           (equalp (parse-user-arguments '(&key d e f) ":c 1 :d 2")
-                  (list :C "1" :D "2"))))
+                  (list :C 1 :D 2))))
 
 ;; (parse-keyword-args ":a 1 :b 22 :c hello :d nil :e t")
 ;; => (:A 1 :B 22 :C "hello" :D NIL :E T)

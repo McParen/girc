@@ -50,6 +50,7 @@ mainly to be imported to the command package.")
    send
    send-raw
    find-connection
+   add-connection
 
    ;; event
    *event-handlers*
@@ -105,6 +106,7 @@ mainly to be imported to the command package.")
    send
    send-raw
    find-connection
+   add-connection
    *event-handlers*
    *ui*
    input-field)
