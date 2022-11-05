@@ -53,21 +53,21 @@ When SSL is enabled, the user mode Z is set, and the numeric reply 671
 
    (nickname
     :initarg       :nickname
-    :initform      nil
+    :initform      conf:nickname
     :accessor      nickname
     :type          (or null string)
     :documentation "Nickname of the user to be registered with the connected server.")
 
    (username
     :initarg       :username
-    :initform      "myuser"
+    :initform      conf:username
     :accessor      username
     :type          (or null string)
     :documentation "Username of the user to be registered with the connected server.")
 
    (realname
     :initarg       :realname
-    :initform      "Realname"
+    :initform      conf:realname
     :accessor      realname
     :type          (or null string)
     :documentation "Realname of the user to be registered with the connected server.")

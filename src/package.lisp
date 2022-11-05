@@ -63,6 +63,9 @@ mainly to be imported to the command package.")
    "The conf package contains global variables to be set from the init file.")
   (:use :common-lisp)
   (:export
+   nickname
+   username
+   realname
    show-server-ping))
 
 (cl:defpackage :de.anvi.girc.command

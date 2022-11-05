@@ -8,3 +8,12 @@
 
 (defparameter show-server-ping nil
   "Set to t to show the server PING event and the PONG response.")
+
+(defparameter nickname nil
+  "Default nickname to be used when a server specific nick is not provided.")
+
+(defparameter username "myuser"
+  "Default username to be used when a server specific user is not provided.")
+
+(defparameter realname "Realname"
+  "Default realname to be used when a server specific name is not provided.")
