@@ -94,10 +94,10 @@ If buffer is t, the current buffer is used."
   "Loop through the list of buffers, return the buffer associated with the connection of the message.
 
 First try to return a buffer without a specified target, i.e. the main buffer for the connection."
-  (find-buffer (connection msg) nil))
+  (find-buffer nil (connection msg)))
 
-(defun find-buffer (connection target)
-  "Check if there is a buffer associated with a connection and a target channel.
+(defun find-buffer (target connection)
+  "Return the buffer associated with the connection and the target channel.
 
 When there is no connection with that target, return the buffer for the connection."
   (if target

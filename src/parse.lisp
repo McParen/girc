@@ -133,6 +133,10 @@
   "Return a list of substrings of str2 split on chars from str1."
   (values (split-sequence:split-sequence-if #'(lambda (i) (position i str1)) str2 :remove-empty-subseqs t)))
 
+(defun split (str &optional (ch #\space))
+  "Split the string on single and multiple spaces, trim all empty strings."
+  (split-sequence:split-sequence ch str :remove-empty-subseqs t))
+
 ;; type of prefix can be nick-user-host or just a host.
 ;; (get-nick-user-host "nick!user@host") => ("nick" "user" "host")
 ;; (get-nick-user-host "leo!~leo@host-205-241-38-153.acelerate.net") => ("leo" "~leo" "host-205-241-38-153.acelerate.net")

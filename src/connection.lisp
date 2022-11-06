@@ -350,3 +350,27 @@ and the hostname of the server."
 (defun find-connection (name)
   "Return the connection object associated with the given connection name."
   (find name *connections* :key #'name :test #'string=))
+
+(defun add-channel (name connection)
+  (push (make-instance 'channel :name name)
+        (channels connection)))
+
+(defun remove-channel (name connection)
+  (with-slots (channels) connection
+    (setf channels
+          (remove name channels :test #'string= :key #'name))))
+
+(defun find-channel (name connection)
+  (find name (channels connection) :key #'name :test #'string=))
+
+(defun add-nick (nick channel)
+  "Add a nick to the channel nicklist."
+  (if (char= (char nick 0) #\@)
+      ;; remove the @ before pushing the nick to the list.
+      (push (subseq nick 1) (nicknames channel))
+      (push nick (nicknames channel))))
+
+(defun remove-nick (nick channel)
+  (with-slots (nicknames) channel
+    (setf nicknames
+          (remove nick nicknames :test #'string=))))

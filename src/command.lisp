@@ -200,11 +200,8 @@ Bound to #\newline in girc-input-map."
           (buffer "new"
                   (name (connection (current-buffer)))
                   channel))
-
         ;; add the channel to the connection
-        (push (make-instance 'channel :name channel)
-              (channels (connection (current-buffer))))
-
+        (add-channel channel (connection (current-buffer)))
         (send t :join (list channel)))
       (echo t "-!- Required argument: /join <channel>")))
 
@@ -239,8 +236,7 @@ Bound to #\newline in girc-input-map."
           (buffer "kill"))
 
         ;; remove the channel from the channel list of the connection
-        (setf (channels (connection (current-buffer)))
-              (remove channel (channels (connection (current-buffer))) :test #'string= :key #'name))
+        (remove-channel channel (connection (current-buffer)))
 
         (send t :part (list channel)))
       (progn

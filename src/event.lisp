@@ -132,7 +132,7 @@ For now, the raw irc message will simply be displayed in the output window."
   (destructuring-bind (user subcommand) params
     (alexandria:switch (subcommand :test #'string=)
       ("LS"
-       (let ((available (split-sequence:split-sequence #\space text :remove-empty-subseqs t)))
+       (let ((available (split text)))
          (if (and available
                   (member "sasl" available :test #'string=))
              ;; SASL capability available, proceed with request.
@@ -140,7 +140,7 @@ For now, the raw irc message will simply be displayed in the output window."
              (cap connection "REQ" "sasl")
              (echo buffer "-!- SASL capability not supported by server"))))
       ("ACK"
-       (let ((enabled (split-sequence:split-sequence #\space text :remove-empty-subseqs t)))
+       (let ((enabled (split text)))
          (if (and enabled
                   (member "sasl" enabled :test #'string=))
              ;; SASL capability enabled, proceed with authentication request.
@@ -152,7 +152,7 @@ For now, the raw irc message will simply be displayed in the output window."
 ;; Server: AUTHENTICATE +
 ;; The event handler of AUTHENTICATE sends the base64-encoded sasl plain token
 ;; Client: AUTHENTICATE Kj3TjdlfkjsljLKJWI109u31==
-(define-event authenticate (msg buffer rawmsg connection params)
+(define-event authenticate (msg buffer connection params)
   (destructuring-bind (arg) params
     ;; The AUTHENTICATE + event prompts for the base64-encoded sasl auth token.
     (when (string= arg "+")
@@ -183,7 +183,9 @@ For now, the raw irc message will simply be displayed in the output window."
 (define-event join (msg connection prefix-nick command params text)
   (let ((channel (cond (text text)
                        (params (nth 0 params)))))
-    (let ((buffer (find-buffer connection channel)))
+    (let ((buffer (find-buffer channel connection))
+          (chan (find-channel channel connection)))
+      (add-nick prefix-nick chan)
       (echo buffer "***" prefix-nick "joined" channel))))
 
 ;; Syntax: :<prefix> NOTICE <target> :<text>
@@ -191,8 +193,8 @@ For now, the raw irc message will simply be displayed in the output window."
 ;; :kornbluth.freenode.net NOTICE * :*** Looking up your hostname...
 ;; :kornbluth.freenode.net NOTICE * :*** Checking Ident
 ;; :kornbluth.freenode.net NOTICE * :*** Found your hostname
-(define-event notice (msg buffer text)
-  (echo buffer text))
+(define-event notice (msg prefix buffer text)
+  (display buffer "-~A- ~A" prefix text))
 
 ;; Syntax: :<prefix> PART <channel> :<reason>
 ;; Syntax: :<prefix> PART :<chan>
@@ -201,9 +203,12 @@ For now, the raw irc message will simply be displayed in the output window."
 ;; :another!~another@freenode-bn0om7.k2om.k054.fah2pm.IP PART #linux :"So we must part ways"
 (define-event part (msg connection prefix-nick command params text)
   (let* ((channel (if params (nth 0 params) text))
+         (chan (find-channel channel connection))
          (reason (if (and params text) text nil))
          ;; if there is a buffer for the channel, send part to that buffer
-         (buffer (find-buffer connection channel)))
+         (buffer (find-buffer channel connection)))
+    (unless (string= prefix-nick (nickname connection))
+      (remove-nick prefix-nick chan))
     (if reason
         (display buffer "*** ~A left ~A (~A)" prefix-nick channel reason)
         (echo buffer "***" prefix-nick "left" channel))))
@@ -213,7 +218,7 @@ For now, the raw irc message will simply be displayed in the output window."
 ;; Example: :_vanessa_!~farawayas@user/farawayastronaut NICK :vaness
 ;; Example: :ohokthen!~igloo@172.58.165.154 NICK :FarMoreSinister
 ;; Example: :haom!~myuser@ip-22-111.un55.pool.myip.com NICK :haoms
-(define-event nick (msg buffer rawmsg prefix-nick prefix-user connection text)
+(define-event nick (msg buffer prefix-nick prefix-user connection text)
   ;; if it is your own nick
   (when (string= prefix-nick (nickname connection))
     ;; update the client
@@ -227,10 +232,10 @@ For now, the raw irc message will simply be displayed in the output window."
     (when (and (eq connection (connection buffer))
                (target buffer)
                (member prefix-nick
-                       (nicknames (find (target buffer)
-                                        (channels (connection buffer))
-                                        :key #'name :test #'string=))
+                       (nicknames (find-channel (target buffer) connection))
                        :test #'string=))
+      (remove-nick prefix-nick (find-channel (target buffer) connection))
+      (add-nick text (find-channel (target buffer) connection))
       (if text
           (display buffer "*** ~A is now known as ~A" prefix-nick text)
           (echo buffer "***" prefix-nick "is now known as ...")))))
@@ -244,8 +249,9 @@ For now, the raw irc message will simply be displayed in the output window."
     (when (and (eq connection (connection buffer))
                (target buffer)
                (member prefix-nick
-                       (nicknames (find (target buffer) (channels (connection buffer)) :key #'name :test #'string=))
+                       (nicknames (find-channel (target buffer) connection))
                        :test #'string=))
+      (remove-nick prefix-nick (find-channel (target buffer) connection))
       (if text
           (display buffer "*** ~A quit (~A)" prefix-nick text)
           (echo buffer "***" prefix-nick "quit")))))
@@ -267,7 +273,7 @@ For now, the raw irc message will simply be displayed in the output window."
 ;; :haom!~myuser@93-142-151-146.adsl.net.com.de PRIVMSG haom :hello there
 (define-event privmsg (msg prefix-nick params connection text)
   (destructuring-bind (target) params
-    (let ((buffer (find-buffer connection target)))
+    (let ((buffer (find-buffer target connection)))
       ;; have different handlers if the msg target is a channel or nick
       (if (channelp target)
           (display buffer "<~A> ~A" prefix-nick text)
@@ -436,13 +442,16 @@ For now, the raw irc message will simply be displayed in the output window."
 (define-event rpl-namreply (msg connection params text)
   (destructuring-bind (nick _ channel) params
     (when text
-      (let ((chan (find channel (channels connection) :key #'name :test #'string=)))
+      (let ((chan (find-channel channel connection)))
         (when chan
-          (unless (slot-value chan 'rpl-namreply-started-p)
-            (setf (slot-value chan 'rpl-namreply-started-p) t
-                  (nicknames chan) nil))
-          (dolist (nick (split-sequence:split-sequence #\space text :test #'equal))
-            (push nick (nicknames chan))))))))
+          (with-slots (nicknames rpl-namreply-started-p) chan
+            (unless rpl-namreply-started-p
+              ;; set the start flag to t, will be set to finished in 366
+              (setf rpl-namreply-started-p t
+                    nicknames nil))
+            ;; push the nicks to the nicknames slot
+            (dolist (nick (split text))
+              (add-nick nick chan))))))))
 
 ;; Number:  366
 ;; Event:   RPL_ENDOFNAMES
@@ -450,8 +459,9 @@ For now, the raw irc message will simply be displayed in the output window."
 ;; Example: :irc.efnet.nl 366 haom #test :End of /NAMES list.
 (define-event rpl-endofnames (msg connection params)
   (destructuring-bind (nick channel) params
-    (let ((chan (find channel (channels connection) :key #'name :test #'string=)))
+    (let ((chan (find-channel channel connection)))
       (when chan
+        ;; set the flag back to finished, was set to started in 353
         (setf (slot-value chan 'rpl-namreply-started-p) nil)))))
 
 ;;; MODE
@@ -471,10 +481,10 @@ For now, the raw irc message will simply be displayed in the output window."
 ;; Example:  :kornbluth.freenode.net 332 McParen #ubuntu :Official Ubuntu Support Channel
 (define-event rpl-topic (msg connection params text)
   (destructuring-bind (client channel) params
-    (let ((buffer (find-buffer connection channel)))
+    (let ((buffer (find-buffer channel connection)))
       (when text
         (display buffer "TOPIC for ~A: ~A" channel text)
-        (let ((chan (find channel (channels connection) :key #'name :test #'string=)))
+        (let ((chan (find-channel channel connection)))
           (when chan
             (setf (slot-value chan 'topic) text)
             (update-topic)))))))
@@ -494,11 +504,11 @@ For now, the raw irc message will simply be displayed in the output window."
 (define-event rpl-topicwhotime (msg connection params text)
   (cond ((= (length params) 4)
          (destructuring-bind (client channel nick setat) params
-           (let ((buffer (find-buffer connection channel)))
+           (let ((buffer (find-buffer channel connection)))
              (display buffer "TOPIC set by ~A on ~A." nick setat))))
         ((= (length params) 3)
          (destructuring-bind (client channel nick) params
-           (let ((buffer (find-buffer connection channel)))
+           (let ((buffer (find-buffer channel connection)))
              (display buffer "TOPIC set by ~A on ~A." nick text))))
         (t
          (echo (buffer msg) (rawmsg msg)))))

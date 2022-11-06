@@ -49,8 +49,13 @@ mainly to be imported to the command package.")
    connect
    send
    send-raw
-   find-connection
    add-connection
+   find-connection
+   add-channel
+   remove-channel
+   find-channel
+   add-nick
+   remove-nick
 
    ;; event
    *event-handlers*
@@ -105,8 +110,13 @@ mainly to be imported to the command package.")
    nicknames
    send
    send-raw
-   find-connection
    add-connection
+   find-connection
+   add-channel
+   remove-channel
+   find-channel
+   add-nick
+   remove-nick
    *event-handlers*
    *ui*
    input-field)
