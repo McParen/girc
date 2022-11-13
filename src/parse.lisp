@@ -145,7 +145,16 @@
       (string-tokenize "!@" prefix)
       ;; if the prefix isnt in the form nick!user@host it is just a server hostname
       ;; :efnet.portlane.se 366 haom #EFNetNews :End of /NAMES list.
-      (list "" "" prefix)))
+      (list nil nil prefix)))
+
+(defun prefix-nick (irc-msg)
+  (nth 0 (get-nick-user-host (prefix irc-msg))))
+
+(defun prefix-user (irc-msg)
+  (nth 1 (get-nick-user-host (prefix irc-msg))))
+
+(defun prefix-host (irc-msg)
+  (nth 2 (get-nick-user-host (prefix irc-msg))))
 
 ;; (get-params-and-text '("prefix" "command" "p1 p2 p3 :text1 text2")) => (("p1" "p2" "p3") "text1 text2")
 ;; (get-params-and-text '(NIL "command" "p1 p2 p3 :text1 text2")) => (("p1" "p2" "p3") "text1 text2")
@@ -177,15 +186,6 @@
          (lst2 (get-params-and-text lst1)))
     (make-instance 'irc-message :connection connection :rawmsg rawmsg :prefix (car lst1)
                    :command (cadr lst1) :params (car lst2) :text (cadr lst2))))
-
-(defun prefix-nick (irc-msg)
-  (nth 0 (get-nick-user-host (prefix irc-msg))))
-
-(defun prefix-user (irc-msg)
-  (nth 1 (get-nick-user-host (prefix irc-msg))))
-
-(defun prefix-host (irc-msg)
-  (nth 2 (get-nick-user-host (prefix irc-msg))))
 
 ;; Examples:
 ;; (parse-user-input "/hello there dear john") => ("hello" . "there dear john")

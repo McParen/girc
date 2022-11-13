@@ -175,7 +175,7 @@ For now, the raw irc message will simply be displayed in the output window."
 ;; Comment: If SASL auth is successful, server replies with rpl-saslsuccess (603).
 ;;          The handler must close the capability negotiation with CAP END.
 ;; Example: :sodium.libera.chat 903 BigusNickus :SASL authentication successful
-(define-event rpl-saslsuccess (prefix-nick buffer connection params text)
+(define-event rpl-saslsuccess (buffer connection params text)
   (destructuring-bind (nick) params
     (echo buffer "***" text)
     (cap connection "END")))
@@ -199,8 +199,16 @@ For now, the raw irc message will simply be displayed in the output window."
 ;; :kornbluth.freenode.net NOTICE * :*** Looking up your hostname...
 ;; :kornbluth.freenode.net NOTICE * :*** Checking Ident
 ;; :kornbluth.freenode.net NOTICE * :*** Found your hostname
-(define-event notice (prefix buffer text)
-  (display buffer "-~A- ~A" prefix text))
+;; :ixelp!~ixelp@p5492dd99.dip0.t-ipconnect.de NOTICE #lispcafe :Military solutions | Honeywell
+(define-event notice (connection prefix-nick prefix-host params text)
+  (destructuring-bind (target) params
+    (let ((source (if prefix-nick
+                      ;; nick!user@host
+                      prefix-nick
+                      ;; kornbluth.freenode.net
+                      prefix-host))
+          (buffer (find-buffer target connection)))
+      (display buffer "-~A- ~A" source text))))
 
 ;; Syntax: :<prefix> PART <channel> :<reason>
 ;; Syntax: :<prefix> PART :<chan>
@@ -269,9 +277,7 @@ For now, the raw irc message will simply be displayed in the output window."
   ;; return a PONG to the server which sent the PING.
   (pong connection text))
 
-;; Syntax:
-;; :<prefix> PRIVMSG <target> :<text>
-;;
+;; Syntax: :<prefix> PRIVMSG <target> :<text>
 ;; Examples:
 ;; :IdleOne!~idleone@ubuntu/member/idleone PRIVMSG #ubuntu :The_BROS: not at this time.
 ;; :leo!~leo@host-205-241-38-153.acelerate.net PRIVMSG #ubuntu :im a newbie
@@ -478,6 +484,17 @@ For now, the raw irc message will simply be displayed in the output window."
 
 
 ;;; TOPIC
+
+;; Number:  328
+;; Event:   RPL_CHANNEL_URL
+;; Syntax:  :<prefix> 328 <client> <channel> :<url>
+;; Comment: Reply when joining a ChanServ registered channel.
+;; Example: :services. 328 haoms #guix :https://guix.gnu.org
+(define-event rpl-channel-url (connection params text)
+  (destructuring-bind (client channel) params
+    (let ((buffer (find-buffer channel connection)))
+      (when text
+        (display buffer "*** URL for ~A: ~A" channel text)))))
 
 ;; Number:   332
 ;; Event:    RPL_TOPIC

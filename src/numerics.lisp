@@ -23,6 +23,7 @@
     (317 . :rpl-whoisidle)
     (318 . :rpl-endofwhois)
     (319 . :rpl-whoischannels)
+    (328 . :rpl-channel-url)
     (330 . :rpl-whoisaccount)
     (332 . :rpl-topic)
     (333 . :rpl-topicwhotime)
