@@ -31,7 +31,7 @@
   :depends-on ("girc")
   :build-operation program-op
   :build-pathname "girc"
-  :entry-point "girc:run")
+  :entry-point "girc:main")
 
 ;; if sbcl is built with binary compression (zstd or zlib) use the default
 ;; compression level (t) to build the binary.

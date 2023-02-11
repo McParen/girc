@@ -66,8 +66,8 @@
       (let ((*package* (find-package :de.anvi.girc)))
         (load init)))))
 
-;; after quickloading girc, start the client with (girc:run).
-(defun run ()
+(defun main ()
+  "This is the main entry point. After quickloading girc, run the client with (girc:main)."
   (load-init-file)
   (let ((*debugger-hook* #'(lambda (c h)
                              (declare (ignore h))
@@ -80,12 +80,16 @@
     (crt:edit (input-field *ui*))
     (finalize-user-interface *ui*)))
 
-;; requires libzstd.so to be available, produces an approx. 13 MB binary.
-;; omitting executable t produces a core which has to be run with sbcl --core
 #+(and sbcl sb-core-compression)
 (defun build ()
-  "Build the girc executable."
-  (sb-ext:save-lisp-and-die "girc" :toplevel #'girc:run :executable t :compression 22))
+  "Build the girc executable.
+
+Requires libzstd.so to be available, produces an approx. 13 MB binary vs 56 MB uncompressed.
+
+Builds the executable in the current directory, asdf:make puts it into src/
+
+Omitting executable t produces a core which has to be run with sbcl --core."
+  (sb-ext:save-lisp-and-die "girc" :toplevel #'girc:main :executable t :compression 22))
 
 (defun display-logo ()
   "Display the ASCII logo line by line."
@@ -93,11 +97,11 @@
     (echo t i)))
 
 (defun display-info ()
-  (let* ((box (make-instance 'crt:msgbox
+  (let* ((box (make-instance 'dlg:msgbox
                              :title "gIRC v0.0.1"
                              :message *girc-logo*
-                             :message-wrap nil
-                             :dimensions '(15 50)
+                             :wrap-message nil
+                             :width 45
                              :center t)))
     (crt:edit box)
     (close box))

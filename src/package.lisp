@@ -11,7 +11,7 @@ mainly to be imported to the command package.")
 
   (:export
    ;; external interface for starting the client
-   run
+   main
    build
 
    ;; functions that have to be exported from the core package
