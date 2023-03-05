@@ -286,10 +286,26 @@ For now, the raw irc message will simply be displayed in the output window."
 (define-event privmsg (prefix-nick params connection text)
   (destructuring-bind (target) params
     (let ((buffer (find-buffer target connection)))
-      ;; have different handlers if the msg target is a channel or nick
-      (if (channelp target)
-          (display buffer "<~A> ~A" prefix-nick text)
-          (display buffer "*~A* ~A" prefix-nick text)))))
+      (when text
+        (if (ctcp-message-p text)
+            ;; the PRIVMSG text contains an embedded CTCP command.
+            (destructuring-bind (cmd . args) (parse-ctcp-message text)
+              (if (ctcp-command-p cmd)
+                  ;; supported commands
+                  (case (ctcp-command-name cmd)
+                    (:action
+                     ;; action does not require a reply, just a different display.
+                     (display buffer "* ~A ~A" prefix-nick args))
+                    (t
+                     (display buffer "-!- CTCP ~A not yet implemented." cmd)))
+                  ;; unsupported commands.
+                  (display buffer "-!- CTCP ~A request from ~A not supported." cmd prefix-nick)))
+            ;; The PRIVMSG contains just text.
+            (if (channelp target)
+                ;; in a channel: <nick> hello there.
+                (display buffer "<~A> ~A" prefix-nick text)
+                ;; in a query:   *nick* hello there.
+                (display buffer "*~A* ~A" prefix-nick text)))))))
 
 (defun display-event-text (msg)
   "Basic event handler to simply display the message text."

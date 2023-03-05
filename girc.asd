@@ -19,6 +19,7 @@
    (:file "connection")
    (:file "protocol")
    (:file "numerics")
+   (:file "ctcp")
    (:file "event")
    (:file "command")
    (:file "girc")))
