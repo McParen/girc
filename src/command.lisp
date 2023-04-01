@@ -195,20 +195,35 @@ Bound to #\newline in girc-input-map."
 (defun join (channel)
   (if channel
       (progn
+        (send t :join (list channel))
         ;; if the channel isnt already the target, add a new target buffer
         (unless (string= channel (target (current-buffer)))
           (buffer "new"
                   (name (connection (current-buffer)))
                   channel))
         ;; add the channel to the connection
-        (add-channel channel (connection (current-buffer)))
-        (send t :join (list channel)))
+        (add-channel channel (connection (current-buffer))))
       (echo t "-!- Required argument: /join <channel>")))
 
 ;; /msg target text
 (defun msg (target &rest text)
+  ;; display the msg we just sent.
   (display t "~A @ ~A: ~A" (nickname (connection (current-buffer))) target (car text))
   (send t :privmsg (list target) (car text)))
+
+;; /ctcp #testus ACTION tests this command.
+;; * haoms tests this command.
+(defun ctcp (target command &rest args)
+  (send t :privmsg (list target) (make-ctcp-message (join-args command (car args)))))
+
+(defun action (target &rest text)
+  (apply #'ctcp target "ACTION" text)
+  (display t "* ~A ~A" (nickname (connection (current-buffer))) (car text)))
+
+(defun me (&rest text)
+  (if (target (current-buffer))
+      (apply #'action (target (current-buffer)) text)
+      (echo t "-!- Required target in the current buffer.")))
 
 ;; /nick new-nick
 ;; The changes to the client settings happen when the server replies.

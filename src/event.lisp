@@ -29,14 +29,14 @@ If the keyword is unknown, return the integer."
          (key (cdr (assoc numeric *numerics*))))
     (if key key numeric)))
 
-(defun command-to-keyword (cmd)
-  "Return a keyword symbol representing a valid non-numeric irc command."
-  (values (intern (string-upcase cmd) "KEYWORD")))
+(defun string-to-keyword (str)
+  "Take a string, return a keyword symbol representing an irc command."
+  (values (intern (string-upcase str) "KEYWORD")))
 
 (defun get-event-name (cmd)
   "Take a command or numeric string, return a keyword or integer representing the IRC event."
   (cond ((numericp cmd) (numeric-to-keyword cmd))
-        ((commandp cmd) (command-to-keyword cmd))
+        ((commandp cmd) (string-to-keyword cmd))
         ;; TODO: is it better to signal an error or to retun nil if the command isnt valid?
         (t (error "identify-event: event ~A not a valid irc numeric or command." cmd))))
 
@@ -292,12 +292,13 @@ For now, the raw irc message will simply be displayed in the output window."
             (destructuring-bind (cmd . args) (parse-ctcp-message text)
               (if (ctcp-command-p cmd)
                   ;; supported commands
-                  (case (ctcp-command-name cmd)
+                  (case (string-to-keyword cmd)
                     (:action
                      ;; action does not require a reply, just a different display.
                      (display buffer "* ~A ~A" prefix-nick args))
                     (t
                      (display buffer "-!- CTCP ~A not yet implemented." cmd)))
+
                   ;; unsupported commands.
                   (display buffer "-!- CTCP ~A request from ~A not supported." cmd prefix-nick)))
             ;; The PRIVMSG contains just text.

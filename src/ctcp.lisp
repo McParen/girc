@@ -30,7 +30,3 @@
   (if (member (string-upcase cmd) *ctcp-commands* :test #'string=)
       t
       nil))
-
-(defun ctcp-command-name (cmd)
-  "Take the parsed command string, return a Lisp keyword."
-  (values (intern (string-upcase cmd) "KEYWORD")))

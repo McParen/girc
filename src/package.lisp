@@ -21,6 +21,9 @@ mainly to be imported to the command package.")
    display-logo
    display-info
 
+   ;; parse
+   join-args
+
    ;; buffer
    buffer
    connection
@@ -57,6 +60,9 @@ mainly to be imported to the command package.")
    add-nick
    remove-nick
 
+   ;; ctcp
+   make-ctcp-message
+
    ;; event
    *event-handlers*
 
@@ -66,7 +72,7 @@ mainly to be imported to the command package.")
 
 (cl:defpackage :de.anvi.girc.conf
   (:documentation
-   "The conf package contains global variables to be set from the init file.")
+   "The conf package contains global variables to be set from the user init file.")
   (:use :common-lisp)
   (:export
    nickname
@@ -87,6 +93,7 @@ mainly to be imported to the command package.")
   (:import-from #:girc
    display-logo
    display-info
+   join-args
    connection
    target
    *buffers*
@@ -117,6 +124,7 @@ mainly to be imported to the command package.")
    find-channel
    add-nick
    remove-nick
+   make-ctcp-message
    *event-handlers*
    *ui*
    input-field)
@@ -127,6 +135,9 @@ mainly to be imported to the command package.")
   ;; To be recognized as /commands, symbols have to be exported from
   ;; the command package, either here or by the separate export function.
   (:export
+   ctcp
+   action
+   me
    lisp
    logo
    buffer
@@ -147,3 +158,10 @@ mainly to be imported to the command package.")
 ;; we have to define all the packages first, then add the nicknames.
 (add-package-local-nickname "CMD"  :de.anvi.girc.command :de.anvi.girc)
 (add-package-local-nickname "CONF" :de.anvi.girc.conf    :de.anvi.girc)
+
+;; these abbrevs are now visible in the de.anvi.girc package, but we also need
+;; the same abbrevs to be usable from every other package
+(add-package-local-nickname "GIRC" :de.anvi.girc         :de.anvi.girc.command)
+(add-package-local-nickname "CONF" :de.anvi.girc.conf    :de.anvi.girc.command)
+(add-package-local-nickname "GIRC" :de.anvi.girc         :de.anvi.girc.conf)
+(add-package-local-nickname "CMD"  :de.anvi.girc.command :de.anvi.girc.conf)

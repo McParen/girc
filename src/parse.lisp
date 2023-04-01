@@ -393,18 +393,29 @@ If the last parameter is designed as &rest, collect all remaining words into it.
   "1 2 3 => 2"
   (string-car (string-cdr str)))
 
+;; Example: (split-args "a b c") => ("a" "b" "c")
+(defun split-args (args)
+  "Take a string, return a list of substrings split on space as the delimiter."
+  (values (split-sequence:split-sequence #\space args :remove-empty-subseqs t)))
+
+;; Example: (join-args " a " "b " " c") => "a b c"
+(defun join-args (&rest args)
+  "Take a list of strings, join them with space as the delimiter.
+
+Trim spaces around the arguments, if necessary."
+  (format nil "~{~A~^ ~}" (mapcar #'(lambda (i) (string-trim " " i)) args)))
+
 ;; Example: (string-nth 2 "a b c d e f") => "c"
 (defun string-nth (n str)
-  (nth n (split-sequence:split-sequence #\space str :remove-empty-subseqs t)))
-
+  (nth n (split-args str)))
 (defun ntharg (n args)
-  (string-nth n args))
+  (nth n (split-args str)))
 
 ;; (arglen "a b c") => 3
 ;; (arglen "") => 0
 (defun arglen (args)
   "Return the length of the arguments list (= number of passed arguments)."
-  (length (split-sequence:split-sequence #\space args :remove-empty-subseqs t)))
+  (length (split-args args)))
 
 ;; Example: (string-nthcdr 2 "a b c d e f") => "c d e f"
 (defun string-nthcdr (n str)
@@ -425,15 +436,7 @@ If the last parameter is designed as &rest, collect all remaining words into it.
 
 ;; Example: (string-nthcdr 2 "a b c d e f") => ("c" "d" "e" "f")
 (defun string-nthcdr- (n str)
-  (nthcdr n (split-sequence:split-sequence #\space str :remove-empty-subseqs t)))
-
-(defun split-args (args-string)
-  "Take a string, return a list of substrings split on space as the delimiter."
-  (split-sequence:split-sequence #\space args-string))
-
-(defun join-args (args-list)
-  "Take a list of strings, join them with space as the delimiter."
-  (format nil "~{~A~^ ~}" args-list))
+  (nthcdr n (split-args str)))
 
 ;; Example: (string-nth-list '(0 2) "a b c d e f") => ("a" "c")
 (defun string-nth-list (positions str)
