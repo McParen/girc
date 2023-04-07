@@ -125,6 +125,28 @@ nil    The client will not login to NickServ automatically
     :type          boolean
     :documentation "Flag to denote that the server is connected.")
 
+   (rpl-list-channels
+    :initform      nil
+    :type          (or null cons)
+    :documentation
+    "List of channels visible by the server, replies to the LIST command.
+
+It is populated by rpl-list (322).
+
+Every channel is a list of three elements: (name number-of-users topic).")
+
+   (rpl-list-end-p
+    :initform      nil
+    :type          boolean
+    :documentation
+    "Boolean flag to mark the end of a sequence of rpl-list (322) events.
+
+If it is t, it is set to nil (default) by rpl-liststart (321, optional)
+or rpl-list (322). rpl-list-channels is set to nil before the next channel
+is added, which means that a new reply sequence to LIST has been started.
+
+It is set to t by rpl-listend (323).")
+
    (channels
     :initform      nil
     :accessor      channels
@@ -200,9 +222,9 @@ by rpl-endofnames (366)."))
                (eq login-method :sasl))
       ;; To enable SASL, an IRCv3 capability negotiation has to be initialized first by CAP LS.
       ;; It has to be finalized with CAP END, which is sent by the rpl-saslsuccess (903) handler.
-      (cap connection "LS"))
+      (irc:cap connection "LS"))
     ;; registration (nick, user)
-    (register connection)))
+    (irc:register connection)))
 
 (defun disconnect (connection)
   "Cleanly close the socket of the connection."
@@ -301,7 +323,10 @@ If the read length including CRLF exceeds that limit, nil is returned."
             ;; if a LF is read immediately after a CR, return the buffer as a string.
             ;; when we get a LF and the previous char was CR, we have a proper irc message ending.
             ((and (= ch 10) cr-flag)
-             (return (sb-ext:octets-to-string buf)))
+             ;; if we get utf-8 decoding errors (invalid-utf8-continuation-byte),
+             ;, try to convert the byte sequence to latin-1.
+             (return (handler-case (sb-ext:octets-to-string buf :external-format :utf-8)
+                       (sb-int:character-decoding-error (condition) (sb-ext:octets-to-string buf :external-format :latin-1)))))
             ;; connection is ended.
             ((eq ch :eof)
              (return :eof))))))
@@ -352,6 +377,7 @@ and the hostname of the server."
   (find name *connections* :key #'name :test #'string=))
 
 (defun add-channel (name connection)
+  "Take a channel name, make and add a channel object to the connection."
   (push (make-instance 'channel :name name)
         (channels connection)))
 

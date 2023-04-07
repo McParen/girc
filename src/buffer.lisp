@@ -53,6 +53,9 @@
 (defun append-buffer (buffer)
   (crt:append-item *buffers* buffer))
 
+(defun add-buffer (&optional connection-name target)
+  (crt:append-item *buffers* (make-instance 'girc:buffer :connection (find-connection connection-name) :target target)))
+
 (defun select-previous-buffer ()
   (with-accessors ((buf crt:current-item)) *buffers*
     (crt:select-previous-item *buffers*)

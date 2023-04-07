@@ -23,7 +23,7 @@
     :initform      nil
     :accessor      prefix
     :type          (or null string)
-    :documentation "Origin of the message.")
+    :documentation "Source of the message, can be a host or a nick!user@host.")
 
    (command
     :initarg       :command
@@ -98,7 +98,7 @@
       (lststr trmd))))
 
 (defun token (str)
-  "Take a string, return the a list with the first word and the rest of the string."
+  "Take a string, return a list with the first word and the rest of the string."
   (let* ((str (ltrim str))
          (pos (position #\space str)))
     (when str
@@ -140,6 +140,7 @@
 ;; type of prefix can be nick-user-host or just a host.
 ;; (get-nick-user-host "nick!user@host") => ("nick" "user" "host")
 ;; (get-nick-user-host "leo!~leo@host-205-241-38-153.acelerate.net") => ("leo" "~leo" "host-205-241-38-153.acelerate.net")
+
 (defun get-nick-user-host (prefix)
   (if (string-any "!@" prefix)
       (string-tokenize "!@" prefix)
@@ -156,17 +157,54 @@
 (defun prefix-host (irc-msg)
   (nth 2 (get-nick-user-host (prefix irc-msg))))
 
-;; (get-params-and-text '("prefix" "command" "p1 p2 p3 :text1 text2")) => (("p1" "p2" "p3") "text1 text2")
-;; (get-params-and-text '(NIL "command" "p1 p2 p3 :text1 text2")) => (("p1" "p2" "p3") "text1 text2")
+#|
+
+CL-USER> (get-params-and-text '("prefix" "command" "p1 p2 p3 :text1 text2"))
+(("p1" "p2" "p3") "text1 text2")
+
+CL-USER> (get-params-and-text '(NIL "command" "p1 p2 p3 :text1 text2"))
+(("p1" "p2" "p3") "text1 text2")
+
+No prefix and no params:
+
+CL-USER> (get-prefix-and-command "COMMAND :text")
+(NIL "COMMAND" ":text")
+CL-USER> (get-params-and-text *)
+(NIL "text")
+
+CL-USER> (get-prefix-and-command "ERROR :Closing Link: 78-2-83-238.adsl.net.com.com (Quit: haom)")
+(NIL "ERROR" ":Closing Link: 78-2-83-238.adsl.net.com.com (Quit: haom)")
+CL-USER> (get-params-and-text *)
+(NIL "Closing Link: 78-2-83-238.adsl.net.com.com (Quit: haom)")
+
+Params containing a colon:
+
+;; instead of ":" as the start of text, we have to look for " :"
+;; :tungsten.libera.chat 322 haoms ##:D 17 ::D  The Utopian Nightmare of Eternal Happiness
+
+CL-USER> (get-prefix-and-command ":prefix command p1 p2 p:3 :text")
+("prefix" "command" "p1 p2 p:3 :text")
+CL-USER> (get-params-and-text *)
+(("p1" "p2" "p:3") "text")
+
+|#
+
 (defun get-params-and-text (lst)
   "Take a list returned by get-prefix-and-command, return a list with a list of parameters and the text."
-  (let* ((str (third lst))
-         (pos (position #\: str)))
-    (if pos
-        (list (remove "" (split-sequence:split-sequence #\space (subseq str 0 pos)) :test #'equal)
-              (subseq str (1+ pos)))
-        (list (remove "" (split-sequence:split-sequence #\space (subseq str 0 pos)) :test #'equal)
-              nil))))
+  (let* ((str (third lst)))
+    (if (char= (char str 0) #\:)
+        ;; no parameters, only text: ":prefix command :text", ("prefix" "command" ":text")
+        (list nil
+              (subseq str 1))
+        ;; we have to use search (substring) instead of position (single char) to exclude
+        ;; the case where a parameter contains the colon character, for example
+        ;; ":prefix command p1 p2 #p:3 :text1 text2"
+        (let ((pos (search " :" str)))
+          (if pos
+              (list (remove "" (split-sequence:split-sequence #\space (subseq str 0 pos)) :test #'equal)
+                    (subseq str (+ 2 pos)))
+              (list (remove "" (split-sequence:split-sequence #\space (subseq str 0 pos)) :test #'equal)
+                    nil))))))
 
 ;; (parse ":prefix command p1 p2 p3 :text1 text2") => ("prefix" "command" ("p1" "p2" "p3") "text1 text2")
 (defun parse2 (rawmsg)
@@ -208,22 +246,30 @@ Called from handle-user-command."
       ;; if we have no command, only the arguments.
       (cons nil str)))
 
-;; If there are more tokens than parameters, ignore the additional tokens.
+#|
 
-;; (parse-user-arguments '(a b c) "foo bar baz qux")
-;; => ("foo" "bar" "baz")
+If there are more tokens than parameters, ignore the additional tokens.
 
-;; To catch the additional tokens, use the &rest keyword.
+(parse-user-arguments '(a b c) "foo bar baz qux")
+=> ("foo" "bar" "baz")
 
-;; (parse-user-arguments '(a b &rest c) "foo bar baz qux")
-;; => ("foo" "bar" "baz qux")
+To catch the additional tokens, use the &rest keyword.
 
-;; If there are more parameters than tokens, they are optional, so return nil
+(parse-user-arguments '(a b &rest c) "foo bar baz qux")
+=> ("foo" "bar" "baz qux")
 
-;; (parse-user-arguments '(a b c) "foo")
-;; => ("foo" NIL NIL)
-;; (parse-user-arguments '(a b &rest c) "foo bar")
-;; => ("foo" "bar" "")
+If there are more parameters than tokens, they are optional, so return nil
+
+(parse-user-arguments '(a b c) "foo")
+=> ("foo" NIL NIL)
+(parse-user-arguments '(a b &rest c) "foo bar")
+=> ("foo" "bar" "")
+
+Neither optional nor key arguments support default values yet.
+
+So this doesnt work &optional (a 1) or &key (min 10).
+
+|#
 
 (defun test-params ()
   ;; 1. too many arguments
@@ -409,7 +455,7 @@ Trim spaces around the arguments, if necessary."
 (defun string-nth (n str)
   (nth n (split-args str)))
 (defun ntharg (n args)
-  (nth n (split-args str)))
+  (nth n (split-args args)))
 
 ;; (arglen "a b c") => 3
 ;; (arglen "") => 0

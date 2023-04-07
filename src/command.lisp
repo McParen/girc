@@ -39,15 +39,39 @@ Bound to #\newline in girc-input-map."
 
 (in-package :de.anvi.girc.command)
 
-;; send to the current server:
-;; (send t :command list-of-param-strings text-string)
-
 (defun logo ()
   (display-logo))
 
-;; eval the lisp form given on the command line and print the return in the buffer
+;; eval the lisp form given on the command line and print the _return_ in the buffer
 (defun lisp (&rest args)
-  (echo t (cl:eval (read-from-string (first args)))))
+  (echo t (eval (read-from-string (first args)))))
+
+;; /channel load :mask *lisp* :args >10
+;; /channel load :mask *lisp*
+;; /channel list :count 20
+
+(defun channel (cmd &key mask args count)
+  (alexandria:switch (cmd :test #'string=)
+    ("load"
+     ;; load a list of channels from the server into a list
+     (irc:list t mask args))
+    ("list"
+     ;; display the `count' (default 10) largest channels
+     (if (connection (current-buffer))
+         (with-slots (rpl-list-channels) (connection (current-buffer))
+           (if rpl-list-channels
+               (loop for chan in rpl-list-channels
+                     repeat (if count count 10)
+                     do
+                        (destructuring-bind (channel-name user-number topic) chan
+                          (display t "~20A ~5@A  ~50A"
+                                   channel-name
+                                   user-number
+                                   (if (> (length topic) 40)
+                                       (subseq topic 0 40)
+                                       topic))))
+               (echo t "-!- Channels list is empty. Run `chans load' to reload from server.")))
+         (echo t "-!- Channels list: Buffer not associated with a connection.")))))
 
 ;; /buffer kill
 ;; /buffer list
@@ -77,12 +101,7 @@ Bound to #\newline in girc-input-map."
                       (name (connection b)))
                     (target b))))
     ("new"
-     (append-buffer (cond ((and arg0 arg1)
-                           (make-instance 'girc:buffer :connection (find-connection arg0) :target arg1))
-                          (arg0
-                           (make-instance 'girc:buffer :connection (find-connection arg0)))
-                          (t
-                           (make-instance 'girc:buffer))))
+     (add-buffer arg0 arg1)
      (select-last-buffer))
     ("names"
      (if (target (current-buffer))
@@ -98,8 +117,23 @@ Bound to #\newline in girc-input-map."
     ("connection"
      ;; associate a buffer with an existing connection or nil
      (if arg0
-         (setf (connection (current-buffer)) (find-connection arg0))
-         (setf (connection (current-buffer)) nil)))
+         (let ((conn (find-connection arg0)))
+           (if conn
+               (progn
+                 (setf (connection (current-buffer)) conn)
+                 (echo t "--- Current buffer connection set to" arg0)
+                 (update-status))
+               (progn
+                 (echo t "-!- Server connection" arg0 "not found."))))
+         ;; if no connection name was given,
+         ;; set the connection to nil (remove the current connection)
+         (let ((conn (connection (current-buffer))))
+           (if conn
+               (progn
+                 (setf (connection (current-buffer)) nil)
+                 (echo t "--- Buffer connection removed.")
+                 (update-status))
+               (echo t "-!- Current buffer not associated with a connection.")))))
     (t
      (if cmd
          (echo t "-!- Undefined command: /buffer" cmd)
@@ -180,10 +214,11 @@ Bound to #\newline in girc-input-map."
   (if name
       (let* ((con (find-connection name)))
         (if con
-            (progn (girc:connect con)
-                   ;; associate the current buffer with the new connection
-                   (setf (connection (current-buffer)) con)
-                   (update-status))
+            (progn
+              (girc:connect con)
+              ;; associate the current buffer with the new connection
+              (setf (connection (current-buffer)) con)
+              (update-status))
             (echo t "-!- Connection not found:" name)))
       (echo t "-!- Required argument: /connect <name>")))
 
@@ -194,41 +229,40 @@ Bound to #\newline in girc-input-map."
 ;; /join #channel
 (defun join (channel)
   (if channel
-      (progn
-        (send t :join (list channel))
-        ;; if the channel isnt already the target, add a new target buffer
-        (unless (string= channel (target (current-buffer)))
-          (buffer "new"
-                  (name (connection (current-buffer)))
-                  channel))
-        ;; add the channel to the connection
-        (add-channel channel (connection (current-buffer))))
+      ;; send a join request to the server.
+      ;; the channel is actually joined when the join event is handled.
+      ;; we have to do this in the join event handler in case we cant
+      ;; join the channel and receive an error message, for example 474.
+      (irc:join t channel)
       (echo t "-!- Required argument: /join <channel>")))
 
 ;; /msg target text
 (defun msg (target &rest text)
   ;; display the msg we just sent.
   (display t "~A @ ~A: ~A" (nickname (connection (current-buffer))) target (car text))
-  (send t :privmsg (list target) (car text)))
+  (irc:privmsg t target (car text)))
 
 ;; /ctcp #testus ACTION tests this command.
 ;; * haoms tests this command.
 (defun ctcp (target command &rest args)
-  (send t :privmsg (list target) (make-ctcp-message (join-args command (car args)))))
+  (irc:ctcp t target command (car args)))
 
 (defun action (target &rest text)
-  (apply #'ctcp target "ACTION" text)
-  (display t "* ~A ~A" (nickname (connection (current-buffer))) (car text)))
+  (if text
+      (progn
+        (irc:ctcp t target "ACTION" (car text))
+        (display t "* ~A ~A" (nickname (connection (current-buffer))) (car text)))
+      (display t "-!- CTCP ACTION requires a text argument.")))
 
 (defun me (&rest text)
   (if (target (current-buffer))
-      (apply #'action (target (current-buffer)) text)
-      (echo t "-!- Required target in the current buffer.")))
+      (action (target (current-buffer)) (car text))
+      (echo t "-!- No target associated with the curent buffer.")))
 
 ;; /nick new-nick
 ;; The changes to the client settings happen when the server replies.
 (defun nick (new-nick)
-  (send t :nick (list new-nick)))
+  (irc:nick t new-nick))
 
 ;; /say hello there dear john
 (defun say (&rest text)
@@ -237,7 +271,7 @@ Bound to #\newline in girc-input-map."
           (if (target (current-buffer))
               (progn
                 (display t "<~A> ~A" (nickname (connection (current-buffer))) (car text))
-                (send t :privmsg (list (target (current-buffer))) (car text)))
+                (irc:privmsg t (target (current-buffer)) (car text)))
               (display t "-!- Current buffer not associated with a target."))
           (display t "-!- Connection ~A not connected." (name (connection (current-buffer)))))
       (display t "-!- Current buffer not associated with a connection.")))
@@ -253,27 +287,27 @@ Bound to #\newline in girc-input-map."
         ;; remove the channel from the channel list of the connection
         (remove-channel channel (connection (current-buffer)))
 
-        (send t :part (list channel)))
+        (irc:part t channel))
       (progn
         ;; if no channel was given, but the current buffer has a target
         (if (target (current-buffer))
-            ;; recursively leave the target
+            ;; recursively leave the current target
             (part (target (current-buffer)))
             ;; if we call part from a server buffer without a target, we need an argument
             (echo t "-!- Required argument: /part <channel>")))))
 
 ;; /quit
-(defun quit ()
-  (send t :quit))
+(defun quit (&rest message)
+  (irc:quit t (car message)))
 
 ;; /quote args*
 ;; /quote WHOIS McParen
 (defun quote (&rest args)
   (echo t "/quote" (car args))
-  (send-raw t (car args)))
+  (send-raw-message t (car args)))
 
 ;; /whois nick
 ;; /whois nick nick
 ;; If nick is given a second time, additionally return 317 seconds idle, signon time
 (defun whois (&rest args)
-  (send t :whois (list (car args))))
+  (irc:whois t (car args)))

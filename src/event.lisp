@@ -1,8 +1,9 @@
 (in-package :de.anvi.girc)
 
 (defparameter *irc-commands*
-  '("ERROR" "JOIN" "KICK" "MODE" "NICK" "NOTICE" "PART" "PING" "PRIVMSG" "QUIT" "TOPIC" "CAP" "AUTHENTICATE")
-  "Commands a client can receive from the server.")
+  '("AUTHENTICATE" "CAP" "ERROR" "JOIN" "KICK" "MODE" "NICK" "NOTICE"
+    "PART" "PING" "PRIVMSG" "QUIT" "TOPIC" "WALLOPS")
+  "Commands the client can receive from the server.")
 
 ;; TODO: (every #'digit-char-p string)
 (defun numericp (cmd)
@@ -38,7 +39,9 @@ If the keyword is unknown, return the integer."
   (cond ((numericp cmd) (numeric-to-keyword cmd))
         ((commandp cmd) (string-to-keyword cmd))
         ;; TODO: is it better to signal an error or to retun nil if the command isnt valid?
-        (t (error "identify-event: event ~A not a valid irc numeric or command." cmd))))
+        (t (echo t "-!- get-event-name: received event ~A not a supported irc numeric or command." cmd)
+           ;; return nil to ignore the event
+           nil)))
 
 ;; TODO: this is a global variable at first, should be a server/connection slot later.
 ;; The user should be able to customize the responses for each server separately.
@@ -143,7 +146,7 @@ For now, the raw irc message will simply be displayed in the output window."
                   (member "sasl" available :test #'string=))
              ;; SASL capability available, proceed with request.
              ;; If enabled, replied with CAP ACK.
-             (cap connection "REQ" "sasl")
+             (irc:cap connection "REQ" "sasl")
              (echo buffer "-!- SASL capability not supported by server"))))
       ("ACK"
        (let ((enabled (split text)))
@@ -151,7 +154,7 @@ For now, the raw irc message will simply be displayed in the output window."
                   (member "sasl" enabled :test #'string=))
              ;; SASL capability enabled, proceed with authentication request.
              ;; If successful, replied with a AUTHENTICATE + prompt for the base64 auth token.
-             (authenticate connection "PLAIN")
+             (irc:authenticate connection "PLAIN")
              (echo buffer "-!- Requested SASL capability not enabled.")))))))
 
 ;; Client: AUTHENTICATE PLAIN
@@ -164,7 +167,7 @@ For now, the raw irc message will simply be displayed in the output window."
     (when (string= arg "+")
       (with-slots ((nick nickserv-account)
                    (pass nickserv-password)) connection
-        (authenticate connection (base64-encode-string (sasl-plain-token nick nick pass)))))))
+        (irc:authenticate connection (base64-encode-string (sasl-plain-token nick nick pass)))))))
 
 ;; Commend: Response to a nickServ login, whether by msg, pass or sasl.
 ;; Syntax:  :server 900 <nick> <nick>!<ident>@<host> <account> :You are now logged in as <user>
@@ -178,7 +181,7 @@ For now, the raw irc message will simply be displayed in the output window."
 (define-event rpl-saslsuccess (buffer connection params text)
   (destructuring-bind (nick) params
     (echo buffer "***" text)
-    (cap connection "END")))
+    (irc:cap connection "END")))
 
 ;; Event:   JOIN
 ;; Syntax:  :<prefix> JOIN :<channel>
@@ -186,9 +189,25 @@ For now, the raw irc message will simply be displayed in the output window."
 ;; Comment: The target channel is on some servers param 0, sometimes the text.
 ;; Example: :haom!~myuser@78-2-83-238.adsl.net.com.com JOIN :#testus
 ;; Example: :haom!~myuser@78-2-83-238.adsl.net.com.com JOIN #testus
+;; Example: :haoms!~mcp@dslb-178-001-122-235.178.001.pools.vodafone-ip.de JOIN :#IRC30
 (define-event join (connection prefix-nick command params text)
-  (let ((channel (cond (text text)
-                       (params (nth 0 params)))))
+  (let* ((channel (cond (text text)
+                        (params (nth 0 params)))))
+    ;; your own nick joins the channel
+    (when (string= (nickname (connection (current-buffer)))
+                   prefix-nick)
+      ;; if the channel isnt already the target of the current buffer
+      ;; add a new target buffer
+      (unless (string= channel (target (current-buffer)))
+        (add-buffer (name (connection (current-buffer)))
+                    channel)
+        ;; then display the last added buffer
+        (select-last-buffer))
+      ;; add a channel object to the connection
+      (add-channel channel (connection (current-buffer))))
+
+    ;; other nicks join the channel
+    ;; which means you already are on the channel and channel object exists.
     (let ((buffer (find-buffer channel connection))
           (chan (find-channel channel connection)))
       (add-nick prefix-nick chan)
@@ -200,6 +219,11 @@ For now, the raw irc message will simply be displayed in the output window."
 ;; :kornbluth.freenode.net NOTICE * :*** Checking Ident
 ;; :kornbluth.freenode.net NOTICE * :*** Found your hostname
 ;; :ixelp!~ixelp@p5492dd99.dip0.t-ipconnect.de NOTICE #lispcafe :Military solutions | Honeywell
+
+;; Special case:
+;; Syntax: ChanServ NOTICE <nick> :[<channel] <text>
+;; Examples:
+;; :ChanServ!ChanServ@services.libera.chat NOTICE haoms :[#guix] Be kind to everyone:
 (define-event notice (connection prefix-nick prefix-host params text)
   (destructuring-bind (target) params
     (let ((source (if prefix-nick
@@ -207,8 +231,17 @@ For now, the raw irc message will simply be displayed in the output window."
                       prefix-nick
                       ;; kornbluth.freenode.net
                       prefix-host))
-          (buffer (find-buffer target connection)))
-      (display buffer "-~A- ~A" source text))))
+          (buffer (if (and (string= prefix-nick "ChanServ")
+                           (char= #\[ (char text 0))
+                           (channelp (string-trim "[]" (string-car text))))
+                      ;; chanserv notice when joining a channel
+                      ;; display in the channel buffer, if available
+                      (find-buffer (string-trim "[]" (string-car text)) connection)
+                      ;; normal notice
+                      (find-buffer target connection))))
+      (if source
+          (display buffer "-~A- ~A" source text)
+          (echo buffer text)))))
 
 ;; Syntax: :<prefix> PART <channel> :<reason>
 ;; Syntax: :<prefix> PART :<chan>
@@ -275,7 +308,7 @@ For now, the raw irc message will simply be displayed in the output window."
     (echo buffer rawmsg)
     (display buffer "PONG :~A" text))
   ;; return a PONG to the server which sent the PING.
-  (pong connection text))
+  (irc:pong connection text))
 
 ;; Syntax: :<prefix> PRIVMSG <target> :<text>
 ;; Examples:
@@ -312,6 +345,13 @@ For now, the raw irc message will simply be displayed in the output window."
   "Basic event handler to simply display the message text."
   (with-msg (buffer text) msg
     (echo buffer text)))
+
+;; Event:   WALLOPS
+;; Syntax:  :<prefix> WALLOPS :<text>
+;; Comment: Send a message to all currently connected users who have set the "w" user mode
+;; Example: :csd.bu.edu WALLOPS :Connect '*.uiuc.edu 6667' from Joshua
+(bind-event wallops 'display-event-text)
+
 
 ;;; Replies 001 to 004 are sent upon a successful registration
 
@@ -432,12 +472,6 @@ For now, the raw irc message will simply be displayed in the output window."
 (define-event rpl-endofmotd (buffer text)
   (echo buffer "---" text))
 
-;; Number:
-;; Event:
-;; Syntax:  
-;; Comment: 
-;; Example: 
-
 ;;; ERROR
 
 ;; Comment: Reply to QUIT
@@ -451,12 +485,48 @@ For now, the raw irc message will simply be displayed in the output window."
 
 ;;; LIST
 
-;; list #irc30
+#|
+Replies to the LIST message, sent by the /channel load command.
 
-;; :irc.efnet.nl 321 haom Channel :Users  Name
-;; :irc.efnet.nl 322 haom #IRC30 258 :Call your Mom :)
-;; :irc.efnet.nl 323 haom :End of /LIST
+RPL_LISTSTART (321)
+RPL_LIST (322)
+RPL_LISTEND (323)
 
+:irc.efnet.nl 321 haom Channel :Users  Name
+:irc.efnet.nl 322 haom #IRC30 258 :Call your Mom :)
+:irc.efnet.nl 323 haom :End of /LIST
+
+:irc.efnet.nl 401 haoms #irc* :No such nick/channel
+:sodium.libera.chat 263 haoms LIST :This command could not be completed because it has been used recently, and is rate-limited.
+|#
+
+(define-event rpl-liststart (connection buffer)
+  (echo buffer "--- Channel LIST Start")
+  (with-slots (rpl-list-channels rpl-list-end-p) connection
+    (when rpl-list-end-p
+      (setf rpl-list-end-p nil
+            rpl-list-channels nil))))
+
+(define-event rpl-list (connection params text)
+  (destructuring-bind (nick channel user-number) params
+    (with-slots (rpl-list-channels rpl-list-end-p) connection
+      (when rpl-list-end-p
+        ;; if the last reply was a list ending,
+        ;; start populating a new channel list from scratch.
+        (setf rpl-list-end-p nil
+              rpl-list-channels nil))
+      ;; add the channel data to the list in the following format:
+      ;; (name user-number topic)
+      (push (list channel (parse-integer user-number) text) rpl-list-channels))))
+
+(define-event rpl-listend (connection buffer)
+  (with-slots (rpl-list-end-p rpl-list-channels) connection
+    (display buffer "--- Channel LIST End: ~A channels found." (length rpl-list-channels))
+    ;; by default, sort the channel list by user numbers
+    (setf rpl-list-channels
+          (sort rpl-list-channels #'> :key #'cadr))
+    (unless rpl-list-end-p
+      (setf rpl-list-end-p t))))
 
 ;;; NAMES
 
@@ -644,3 +714,20 @@ For now, the raw irc message will simply be displayed in the output window."
 (define-event rpl-whoissecure (buffer params text)
   (destructuring-bind (client nick) params
     (echo buffer nick text)))
+
+
+;;; Error replies
+
+;; Number:  474
+;; Event:   ERR_BANNEDFROMCHAN
+;; Syntax:  :<prefix> 474 <client> <channel> :Cannot join channel (+b)
+;; Example: :irc.efnet.nl 474 haoms #efnet :Cannot join channel (+b)
+(define-event err-bannedfromchan (buffer params text)
+  (destructuring-bind (nick channel) params
+    (display buffer "-!- Error: ~A ~A" text channel)))
+
+;; Number:
+;; Event:
+;; Syntax:  
+;; Comment: 
+;; Example: 
