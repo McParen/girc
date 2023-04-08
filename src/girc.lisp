@@ -66,15 +66,52 @@
       (let ((*package* (find-package :de.anvi.girc)))
         (load init)))))
 
+#|
+
+If a server hostname and nickname are passed to the girc binary as
+command line arguments, that server is immediately connected:
+
+  girc [hostname [nickname]]
+
+For example:
+
+  girc irc.libera.chat haoms
+
+|#
+
+(defun parse-posix-argv ()
+  ;; only parse if called from the girc binary with 1 or 2 args.
+  (when (and (search "girc" (nth 0 sb-ext:*posix-argv*))
+             (or (= (length sb-ext:*posix-argv*) 2)
+                 (= (length sb-ext:*posix-argv*) 3)))
+    (case (length sb-ext:*posix-argv*)
+      ;; girc irc.server.org
+      (2 (let* ((host (nth 1 sb-ext:*posix-argv*))
+                (tokens (split-sequence:split-sequence #\. host))
+                (len (length tokens))
+                ;; parse out the host domain as the server name
+                (name (nth (- len 2) tokens)))
+           (cmd:server "add" name host)
+           (cmd:connect name)))
+      ;; girc irc.server.org nick
+      (3 (let* ((host (nth 1 sb-ext:*posix-argv*))
+                (nick (nth 2 sb-ext:*posix-argv*))
+                (tokens (split-sequence:split-sequence #\. host))
+                (len (length tokens))
+                (name (nth (- len 2) tokens)))
+           (cmd:server "add" name host :nickname nick)
+           (cmd:connect name))))))
+
 (defun main ()
   "This is the main entry point. After quickloading girc, run the client with (girc:main)."
-  (load-init-file)
   (let ((*debugger-hook* #'(lambda (c h)
                              (declare (ignore h))
                              (finalize-user-interface *ui*)
                              (print c))))
     (setq *ui* (make-instance 'user-interface))
     (refresh *ui*)
+    (load-init-file)
+    (parse-posix-argv)
     (update-status)
     ;; run the main event loop on the input field
     (crt:edit (input-field *ui*))
