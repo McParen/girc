@@ -25,12 +25,26 @@
 (defun join (connection channel)
   (send connection :join (cl:list channel)))
 
-;; Replies:
-;; rpl-liststart (321)
-;; rpl-list (322)
-;; rpl-listend (323)
-(defun list (connection &optional mask args)
-  (send connection :list (remove nil (cl:list mask args))))
+;; Replies: rpl-liststart (321), rpl-list (322), rpl-listend (323)
+(defun list (connection &optional filters)
+  "Load the list of channels (name, users, topic) from the server.
+
+If additional arguments are given, filter the returned list.
+
+Older servers that dont support filters simply send the whole channel
+list. Many newer ircds support additional filters:
+
+*m* !*m* - channels that match or dont match a mask.
+ >n  <n  - channels with more/less than n users.
+C>n C<n  - channels younger/older than n minutes.
+T>n T<n  - topic changes younger/older than n minutes.
+
+More than one can be applied, if given as a comma-separated list:
+
+LIST >n,*m*,<n"
+  (if filters
+      (send connection :list (cl:list filters))
+      (send connection :list)))
 
 (defun nick (connection nickname)
   "Give the user a new nickname during registration or change the existing one."

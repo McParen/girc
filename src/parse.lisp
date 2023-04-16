@@ -358,18 +358,21 @@ arguments in a single string.
 
 If there are more parameters than string tokens, nil will be returned
 for each."
-  (let* ((restp (member '&rest lbd))
-         (keyp (member '&key lbd))
-         (optp (member '&optional lbd))
+  (let* ((restp (member '&rest     lbd))
+         (keyp  (member '&key      lbd))
+         (optp  (member '&optional lbd))
          ;; remove the key keyword and all arguments.
+         ;; (a b &optional c &rest d &key e f) => (a b &optional c &rest d)
          (lbd1 (if keyp
                    (subseq lbd 0 (position '&key lbd))
                    lbd))
          ;; remove &rest and the rest arg
+         ;; (a b &optional c &rest d) => (a b &optional c)
          (lbd2 (if restp
                    (subseq lbd1 0 (position '&rest lbd1))
                    lbd1))
-         ;; all arguments are optional anyway, remove the &optional keyword.
+         ;; all arguments are optional anyway, remove the &optional keyword
+         ;; (a b &optional c) => (a b c)
          ;; we still can mark args optional, but this only affects the
          ;; function when it is called from lisp.
          (req (if optp
@@ -380,10 +383,10 @@ for each."
     (multiple-value-bind (reqs pos)
         ;; tokenize the first n required (and optional) args
         ;; reqs = list of parsed required (and optional) arguments
-        ;; pos = end of nth arg
+        ;; pos = end of nth required arg, start of rest or key
         (split-sequence:split-sequence #\space str :count nreq)
       ;; if there are no args, split-sequence returns an empty string, but we want nil
-      (let* ((reqs (if (and (= (length reqs) 1)        ; a list with one empty string
+      (let* ((reqs (if (and (= (length reqs) 1)        ; a list with one empty string ("")
                             (= (length (car reqs)) 0)) ; empty string = length 0
                        ;; use nil instead of one empty string
                        nil
@@ -392,16 +395,22 @@ for each."
              (rest-string (if (= 0 (length (subseq str pos)))
                               ;; return nil in its place.
                               nil
-                              ;; if there is a rest, put them all in one string.
+                              ;; if there is a rest, put it all in one string.
                               (subseq str pos)))
              ;; if &key was given, parse the rest into keyword args
              (rest (if keyp
+                       ;; numbers, t, nil and keywords are parsed from strings.
                        (parse-keyword-args rest-string)
-                       (list rest-string))))
+                       (if (null rest-string)
+                           ;; if the rest string is empty, dont return (nil), but just nil.
+                           nil
+                           (list rest-string)))))
         (if (or restp keyp)
+            ;; we have rest or key arguments.
             (if (> nreq (length reqs))
                 (append reqs (make-list (- nreq (length reqs))) rest)
                 (append reqs rest))
+            ;; we have only required and optional arguments.
             (if (> nreq (length reqs))
                 (append reqs (make-list (- nreq (length reqs))))
                 reqs))))))
@@ -444,12 +453,25 @@ If the last parameter is designed as &rest, collect all remaining words into it.
   "Take a string, return a list of substrings split on space as the delimiter."
   (values (split-sequence:split-sequence #\space args :remove-empty-subseqs t)))
 
+(defun string-join (delimiter &rest args)
+  "Take a list of string, join them with the given delimiter (char/string)."
+  (format nil
+          ;;"~{~A~^ ~}"
+          (concatenate 'string
+                       "~{~A~^"
+                       (princ-to-string delimiter)
+                       "~}")
+          args))
+
 ;; Example: (join-args " a " "b " " c") => "a b c"
 (defun join-args (&rest args)
-  "Take a list of strings, join them with space as the delimiter.
+  "Take a list of strings, join them with the space char as delimiter.
 
-Trim spaces around the arguments, if necessary."
-  (format nil "~{~A~^ ~}" (mapcar #'(lambda (i) (string-trim " " i)) args)))
+Trim spaces around the given arguments, if there are any."
+  (apply #'string-join #\space
+         (mapcar #'(lambda (i)
+                     (string-trim " " i))
+                 args)))
 
 ;; Example: (string-nth 2 "a b c d e f") => "c"
 (defun string-nth (n str)
@@ -506,13 +528,13 @@ Trim spaces around the arguments, if necessary."
 
 ;; Example: (replace-all "a $B c d B e f b" "$B" "nick") => "a nick c d B e f b"
 (defun replace-all (string part replacement &key (test #'char=))
-"Returns a new string in which all the occurrences of the part is replaced with replacement."
-    (with-output-to-string (out)
-      (loop with part-length = (length part)
-            for old-pos = 0 then (+ pos part-length)
-            for pos = (search part string :start2 old-pos :test test)
-            do (write-string string out :start old-pos :end (or pos (length string)))
-            when pos do (write-string replacement out)
+  "Return a new string in which all the occurrences of the part is replaced with replacement."
+  (with-output-to-string (out)
+    (loop with part-length = (length part)
+          for old-pos = 0 then (+ pos part-length)
+          for pos = (search part string :start2 old-pos :test test)
+          do (write-string string out :start old-pos :end (or pos (length string)))
+          when pos do (write-string replacement out)
             while pos)))
 
 ;; we want to be able to take a string with special variables

@@ -46,6 +46,7 @@
     (setf input-field (make-instance 'crt:field
                                      :position (list 0 0)
                                      :width (crt:width main-screen)
+                                     :max-buffer-length 400
                                      :window (find :input (crt:leaves layout) :key #'crt:name)
                                      :style (list :foreground nil :background nil)
                                      :keymap 'girc-input-map

@@ -44,44 +44,52 @@ Bound to #\newline in girc-input-map."
 
 ;; eval the lisp form given on the command line and print the _return_ in the buffer
 (defun lisp (&rest args)
-  (echo t (eval (read-from-string (first args)))))
+  (echo t (eval (read-from-string (car args)))))
 
-;; /channel load :mask *lisp* :args >10
-;; /channel load :mask *lisp*
-;; /channel list :count 20
-
-(defun channel (cmd &key mask args count)
+#|
+/channels load
+/channels load #lisp
+/channels load *lisp*,>10,<20
+/channels list
+/channels list 20
+|#
+(defun channel (cmd &rest args)
   (alexandria:switch (cmd :test #'string=)
     ("load"
-     ;; load a list of channels from the server into a list
-     (irc:list t mask args))
+     ;; load the channels from the server into a local list
+     ;; args is one single comma-separated list of filters: *m*,>10,<20
+     (irc:list t (car args)))
     ("list"
-     ;; display the `count' (default 10) largest channels
+     ;; display the n (default 10) largest channels
      (if (connection (current-buffer))
          (with-slots (rpl-list-channels) (connection (current-buffer))
            (if rpl-list-channels
                (loop for chan in rpl-list-channels
-                     repeat (if count count 10)
-                     do
-                        (destructuring-bind (channel-name user-number topic) chan
-                          (display t "~20A ~5@A  ~50A"
+                     ;; dont display the whole list, bit just args (default 10) channels.
+                     repeat (if args
+                                (parse-integer (car args))
+                                10)
+                     do (destructuring-bind (channel-name user-number topic) chan
+                          (display t "~20A ~5@A  ~vA"
                                    channel-name
                                    user-number
-                                   (if (> (length topic) 40)
-                                       (subseq topic 0 40)
+                                   (- (crt:width (output-window *ui*)) 28)
+                                   (if (> (length topic) (- (crt:width (output-window *ui*)) 28))
+                                       (subseq topic 0 (- (crt:width (output-window *ui*)) 28))
                                        topic))))
-               (echo t "-!- Channels list is empty. Run `chans load' to reload from server.")))
-         (echo t "-!- Channels list: Buffer not associated with a connection.")))))
+               (echo t "-!- Channel list is empty. Run `channel load' to reload from server.")))
+         (echo t "-!- Channel list: Buffer not associated with a connection.")))))
 
-;; /buffer kill
-;; /buffer list
-;; /buffer new
-;; /buffer new <connection>
-;; /buffer new <connection> <target>
-;; /buffer target
-;; /buffer target <channel>
-;; /buffer connection <connection>
-
+#|
+/buffer kill
+/buffer list
+/buffer new
+/buffer new <connection>
+/buffer new <connection> <target>
+/buffer target
+/buffer target <channel>
+/buffer connection <connection>
+|#
 (defun buffer (cmd &optional arg0 arg1)
   (alexandria:switch (cmd :test #'string=)
     ("kill"

@@ -24,6 +24,7 @@
 
    ;; parse
    join-args
+   string-join
 
    ;; buffer
    buffer
@@ -73,6 +74,7 @@
 
    ;; ui
    *ui*
+   output-window
    input-field))
 
 (cl:defpackage :de.anvi.girc.irc
@@ -132,6 +134,7 @@
    display-logo
    display-info
    join-args
+   string-join
    channels
    connection
    target
@@ -152,7 +155,6 @@
    sslp
    connectedp
    rpl-list-channels
-   channel
    nicknames
    send
    send-raw-message
@@ -166,6 +168,7 @@
    make-ctcp-message
    *event-handlers*
    *ui*
+   output-window
    input-field)
 
   ;; shadow command names that collide with standard cl functions

@@ -220,10 +220,16 @@ For now, the raw irc message will simply be displayed in the output window."
 ;; :kornbluth.freenode.net NOTICE * :*** Found your hostname
 ;; :ixelp!~ixelp@p5492dd99.dip0.t-ipconnect.de NOTICE #lispcafe :Military solutions | Honeywell
 
-;; Special case:
-;; Syntax: ChanServ NOTICE <nick> :[<channel] <text>
-;; Examples:
-;; :ChanServ!ChanServ@services.libera.chat NOTICE haoms :[#guix] Be kind to everyone:
+;; Special cases:
+
+;; Syntax:   :ChanServ NOTICE <nick> :[<channel] <text>
+;; Examples: :ChanServ!ChanServ@services.libera.chat NOTICE haoms :[#guix] Be kind to everyone
+
+;; Syntax: :alis NOTICE <target> :<channel> <number> :<topic>
+;; :alis!alis@services.libera.chat NOTICE haoms :Returning maximum of ^B64^B channel names matching '^B*irc*^B'
+;; :alis!alis@services.libera.chat NOTICE haoms :##mirc 57 :mIRC 7.72 client support
+;; :alis!alis@services.libera.chat NOTICE haoms :End of output.
+
 (define-event notice (connection prefix-nick prefix-host params text)
   (destructuring-bind (target) params
     (let ((source (if prefix-nick
@@ -240,7 +246,11 @@ For now, the raw irc message will simply be displayed in the output window."
                       ;; normal notice
                       (find-buffer target connection))))
       (if source
-          (display buffer "-~A- ~A" source text)
+          (if (string= target "*")
+              ;; Before login, several very general notices are sent without a target.
+              ;; :kornbluth.freenode.net NOTICE * :*** Looking up your hostname...
+              (echo buffer text)
+              (display buffer "-~A- ~A" source text))
           (echo buffer text)))))
 
 ;; Syntax: :<prefix> PART <channel> :<reason>
