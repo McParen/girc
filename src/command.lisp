@@ -47,11 +47,11 @@ Bound to #\newline in girc-input-map."
   (echo t (eval (read-from-string (car args)))))
 
 #|
-/channels load
-/channels load #lisp
-/channels load *lisp*,>10,<20
-/channels list
-/channels list 20
+/channel load
+/channel load #lisp
+/channel load *lisp*,>10,<20
+/channel list
+/channel list 20
 |#
 (defun channel (cmd &rest args)
   (alexandria:switch (cmd :test #'string=)
@@ -249,6 +249,18 @@ Bound to #\newline in girc-input-map."
   ;; display the msg we just sent.
   (display t "~A @ ~A: ~A" (nickname (connection (current-buffer))) target (car text))
   (irc:privmsg t target (car text)))
+
+;; /query <nick>
+(defun query (nick)
+  (if nick
+      (if (string= nick
+                   (nickname (connection (current-buffer))))
+          (display t "-!- ~A is your own nickname." nick)
+          (progn
+            (add-buffer (name (connection (current-buffer)))
+                        nick)
+            (select-last-buffer)))
+      (display t "-!- Query requires a target nickname: /query <nick>")))
 
 ;; /ctcp #testus ACTION tests this command.
 ;; * haoms tests this command.

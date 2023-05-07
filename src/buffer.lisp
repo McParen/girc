@@ -100,9 +100,9 @@ First try to return a buffer without a specified target, i.e. the main buffer fo
   (find-buffer nil (connection msg)))
 
 (defun find-buffer (target connection)
-  "Return the buffer associated with the connection and the target channel.
+  "Return the buffer associated with the connection and the target (channel or query).
 
-When there is no connection with that target, return the buffer for the connection."
+When there is no connection with that target, return the connection buffer (target nil)."
   (if target
       ;; try to find a buffer where both connection and target match
       (let ((buf1 (loop for buf in (crt:items *buffers*)

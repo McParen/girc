@@ -194,6 +194,7 @@
    nick
    say
    part
+   query
    quit
    quote
    whois))

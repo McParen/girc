@@ -349,7 +349,8 @@ For now, the raw irc message will simply be displayed in the output window."
                 ;; in a channel: <nick> hello there.
                 (display buffer "<~A> ~A" prefix-nick text)
                 ;; in a query:   *nick* hello there.
-                (display buffer "*~A* ~A" prefix-nick text)))))))
+                (let ((buffer (find-buffer prefix-nick connection)))
+                  (display buffer "*~A* ~A" prefix-nick text))))))))
 
 (defun display-event-text (msg)
   "Basic event handler to simply display the message text."
