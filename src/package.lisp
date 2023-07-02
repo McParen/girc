@@ -25,9 +25,11 @@
    ;; parse
    join-args
    string-join
+   channelp
 
    ;; buffer
    buffer
+   find-buffer
    connection
    target
    *buffers*
@@ -135,11 +137,13 @@
    display-info
    join-args
    string-join
+   channelp
    channels
    connection
    target
    *buffers*
    current-buffer
+   find-buffer
    display
    echo
    remove-buffer

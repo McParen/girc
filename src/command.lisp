@@ -246,10 +246,22 @@ Bound to #\newline in girc-input-map."
 
 ;; /msg target text
 (defun msg (target &rest text)
-  ;; display the msg we just sent.
-  (display t "~A @ ~A: ~A" (nickname (connection (current-buffer))) target (car text))
-  (irc:privmsg t target (car text)))
+  (if (connection (current-buffer))
+      (if (connectedp (connection (current-buffer)))
+          (cond ((string-equal target (target (current-buffer)))
+                 (if (channelp target)
+                     (display t "<~A> ~A" (nickname (connection (current-buffer))) (car text))
+                     (display t "*~A* ~A" (nickname (connection (current-buffer))) (car text)))
+                 (irc:privmsg t target (car text)))
+                (t
+                 (if (channelp target)
+                     (display t "<~A@~A> ~A" (nickname (connection (current-buffer))) target (car text))
+                     (display t "*~A@~A* ~A" (nickname (connection (current-buffer))) target (car text)))
+                 (irc:privmsg t target (car text))))
+          (display t "-!- Connection ~A not connected." (name (connection (current-buffer)))))
+      (display t "-!- Current buffer not associated with a connection.")))
 
+;; /query
 ;; /query <nick>
 (defun query (nick)
   (if nick
@@ -259,8 +271,15 @@ Bound to #\newline in girc-input-map."
           (progn
             (add-buffer (name (connection (current-buffer)))
                         nick)
-            (select-last-buffer)))
-      (display t "-!- Query requires a target nickname: /query <nick>")))
+            (select-last-buffer)
+            (echo t "*** Starting a query with" nick)))
+      (if (and (target (current-buffer))
+               (not (channelp (target (current-buffer)))))
+          (let ((prev-target (target (current-buffer))))
+            (buffer "kill")
+            (echo (find-buffer prev-target
+                               (connection (current-buffer))) "*** Ending the query with" prev-target))
+          (echo t "-!- Current target is not a query."))))
 
 ;; /ctcp #testus ACTION tests this command.
 ;; * haoms tests this command.
@@ -290,8 +309,10 @@ Bound to #\newline in girc-input-map."
       (if (connectedp (connection (current-buffer)))
           (if (target (current-buffer))
               (progn
-                (display t "<~A> ~A" (nickname (connection (current-buffer))) (car text))
-                (irc:privmsg t (target (current-buffer)) (car text)))
+                 (if (channelp (target (current-buffer)))
+                     (display t "<~A> ~A" (nickname (connection (current-buffer))) (car text))
+                     (display t "*~A* ~A" (nickname (connection (current-buffer))) (car text)))
+                 (irc:privmsg t (target (current-buffer)) (car text)))
               (display t "-!- Current buffer not associated with a target."))
           (display t "-!- Connection ~A not connected." (name (connection (current-buffer)))))
       (display t "-!- Current buffer not associated with a connection.")))

@@ -156,14 +156,15 @@ or the display function can be used which allows format controls."
            (scrlines ())
            ;; number of lines to display
            n)
-      (dolist (ln lines)
-        (dolist (items (if (> (length ln) w)
-                          ;; if a buffer line is wider than the window,
-                          ;; split it into mutiple lines
-                          (reverse (crt:split-lines (crt:wrap-string ln w)))
-                          (list ln)))
-          ;; lines are displayed in the reversed order, oldest first, newest last
-          (push items scrlines)))
+      (dolist (line lines)
+        (let ((ln (remove-if #'crt:control-char-p line)))
+          (dolist (items (if (> (length ln) w)
+                             ;; if a buffer line is wider than the window,
+                             ;; split it into mutiple lines
+                             (reverse (crt:split-lines (crt:wrap-string ln w)))
+                             (list ln)))
+            ;; lines are displayed in the reversed order, oldest first, newest last
+            (push items scrlines))))
       (crt:clear win)
       (crt:move win 0 0)
       (if (>= (length scrlines) h)
