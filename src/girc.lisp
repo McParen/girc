@@ -5,28 +5,25 @@
 ;; passed to the field during initialization
 
 (crt:define-keymap girc-input-map
+  ;; we dont need the irc input field to accept the input and exit the
+  ;; client, use /exit or add some other binding.
   ;; C-a = ^A = #\soh = 1 = start of heading
-  (#\soh 'crt::accept)
+  ;;(#\soh 'crt::accept)
 
-  ;; TODO 201121 use caret notation instead of "soh", etc.
-
-   ;; C-x = cancel = CAN = #\can
+  ;; C-x = cancel = CAN = #\can
   (#\can 'crt::cancel)
 
   ;; C-r = reset = DC2 = #\dc2
   (#\dc2 'crt::reset)
 
-  (:left 'crt::move-previous-char)
-  (:right 'crt::move-next-char)
+  (:key-arrow-left  'crt::move-previous-char)
+  (:key-arrow-right 'crt::move-next-char)
 
-  (:backspace 'crt::delete-previous-char)
+  (:key-backspace   'crt::delete-previous-char)
+  (:key-delete-char 'crt::delete-next-char)
 
-  ;; TODO 201122 rename to :delete-char :insert-char
-
-  (:dc 'crt::delete-next-char)
-
-  (:ic (lambda (field)
-         (crt:toggle-insert-mode field)))
+  (:key-insert-char (lambda (field)
+                      (crt:toggle-insert-mode field)))
 
   ;; TODO 201122 only graphic chars should be added, what about :up?
   (t 'crt::field-add-char)
