@@ -362,7 +362,7 @@ Bound to nil in girc-input-map."
                       ;; message handline writes to the screen, so it has to happen in the main thread
                       (handle-message rawmsg con))) ; see event.lisp
                 (echo (buffer con) "-!- Not a valid IRC message (missing CRLF ending)"))))))
-    (update-output)))
+    (update)))
 
 (defun add-connection (name host &rest args &key &allow-other-keys)
   "Make and add a server object to the connection list.

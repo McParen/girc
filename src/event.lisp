@@ -283,7 +283,7 @@ For now, the raw irc message will simply be displayed in the output window."
     ;; display the change to the server buffer
     (display buffer "*** You are now known as ~A" text)
     ;; update the status line
-    (update-status))
+    (update))
   ;; display the change to chans where the nick is present
   (dolist (buffer (crt:items *buffers*))
     (when (and (eq connection (connection buffer))
@@ -344,6 +344,7 @@ For now, the raw irc message will simply be displayed in the output window."
 
                   ;; unsupported commands.
                   (display buffer "-!- CTCP ~A request from ~A not supported." cmd prefix-nick)))
+
             ;; The PRIVMSG contains just text.
             (if (channelp target)
                 ;; in a channel: <nick> hello there.
@@ -491,7 +492,8 @@ For now, the raw irc message will simply be displayed in the output window."
 (define-event error (buffer connection text)
   (display buffer "-!- Error: ~A" text)
   (disconnect connection)
-  (update-status))
+  (setf (connection (current-buffer)) nil)
+  (update))
 
 
 ;;; LIST
@@ -607,7 +609,7 @@ RPL_LISTEND (323)
         (let ((chan (find-channel channel connection)))
           (when chan
             (setf (slot-value chan 'topic) text)
-            (update-topic)))))))
+            (update)))))))
 
 ;; Number:   333
 ;; Event:    RPL_TOPICWHOTIME

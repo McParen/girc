@@ -33,7 +33,7 @@ Bound to #\newline in girc-input-map."
     (when input
       (crt:reset field)
       (eval input)))
-  (update-output))
+  (update))
 
 ;;; Implementation of user commands
 
@@ -98,7 +98,7 @@ Bound to #\newline in girc-input-map."
          (progn
            (remove-buffer)
            (setf (changedp (current-buffer)) t)
-           (update-status))))
+           (update))))
     ("list"
      (echo t "Number" "Connection" "Target")
      (loop for i from 0 below (length (crt:items *buffers*))
@@ -121,7 +121,7 @@ Bound to #\newline in girc-input-map."
     ("target"
      ;; set the buffer target or nil
      (setf (target (current-buffer)) arg0)
-     (update-status))
+     (update))
     ("connection"
      ;; associate a buffer with an existing connection or nil
      (if arg0
@@ -130,7 +130,7 @@ Bound to #\newline in girc-input-map."
                (progn
                  (setf (connection (current-buffer)) conn)
                  (echo t "--- Current buffer connection set to" arg0)
-                 (update-status))
+                 (update))
                (progn
                  (echo t "-!- Server connection" arg0 "not found."))))
          ;; if no connection name was given,
@@ -140,7 +140,7 @@ Bound to #\newline in girc-input-map."
                (progn
                  (setf (connection (current-buffer)) nil)
                  (echo t "--- Buffer connection removed.")
-                 (update-status))
+                 (update))
                (echo t "-!- Current buffer not associated with a connection.")))))
     (t
      (if cmd
@@ -226,7 +226,7 @@ Bound to #\newline in girc-input-map."
               (girc:connect con)
               ;; associate the current buffer with the new connection
               (setf (connection (current-buffer)) con)
-              (update-status))
+              (update))
             (echo t "-!- Connection not found:" name)))
       (echo t "-!- Required argument: /connect <name>")))
 
@@ -352,3 +352,13 @@ Bound to #\newline in girc-input-map."
 ;; If nick is given a second time, additionally return 317 seconds idle, signon time
 (defun whois (&rest args)
   (irc:whois t (car args)))
+
+(defun show (win)
+  (alexandria:switch (win :test #'string=)
+    ("buffers"
+     (show-buffer-list t))))
+
+(defun hide (win)
+  (alexandria:switch (win :test #'string=)
+    ("buffers"
+     (show-buffer-list nil))))

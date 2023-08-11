@@ -39,7 +39,7 @@
    remove-buffer
    select-last-buffer
    changedp
-   update-status
+   update
    add-buffer
 
    ;; connection
@@ -76,8 +76,10 @@
 
    ;; ui
    *ui*
+   layout
    output-window
-   input-field))
+   input-field
+   show-buffer-list))
 
 (cl:defpackage :de.anvi.girc.irc
   (:documentation
@@ -120,7 +122,8 @@
    nickname
    username
    realname
-   show-server-ping))
+   show-server-ping
+   show-buffer-list))
 
 (cl:defpackage :de.anvi.girc.command
   (:documentation
@@ -149,7 +152,7 @@
    remove-buffer
    select-last-buffer
    changedp
-   update-status
+   update
    add-buffer
    *connections*
    name
@@ -172,8 +175,10 @@
    make-ctcp-message
    *event-handlers*
    *ui*
+   layout
    output-window
-   input-field)
+   input-field
+   show-buffer-list)
 
   ;; shadow command names that collide with standard cl functions
   (:shadow
@@ -186,6 +191,8 @@
    action
    me
    logo
+   show
+   hide
    lisp
    channel
    buffer

@@ -25,6 +25,11 @@
   (:key-insert-char (lambda (field)
                       (crt:toggle-insert-mode field)))
 
+  ;; toggle show buffer list
+  (:key-f4 (lambda ()
+             (setf conf:show-buffer-list (not conf:show-buffer-list))
+             (show-buffer-list conf:show-buffer-list)))
+
   ;; TODO 201122 only graphic chars should be added, what about :up?
   (t 'crt::field-add-char)
 
@@ -38,10 +43,7 @@
              (crt:calculate-layout (layout *ui*))
              (setf (changedp (current-buffer)) t
                    (crt:width (input-field *ui*)) (crt:width (input-window *ui*)))
-             (update-topic)
-             (update-output)
-             (update-status)
-             (refresh *ui*)))
+             (update)))
 
   ;; command.lisp
   (#\newline 'handle-user-command)
@@ -106,10 +108,11 @@ For example:
                              (finalize-user-interface *ui*)
                              (print c))))
     (setq *ui* (make-instance 'user-interface))
-    (refresh *ui*)
     (load-init-file)
     (parse-posix-argv)
-    (update-status)
+    (when conf:show-buffer-list
+      (show-buffer-list t))
+    (update)
     ;; run the main event loop on the input field
     (crt:edit (input-field *ui*))
     (finalize-user-interface *ui*)))

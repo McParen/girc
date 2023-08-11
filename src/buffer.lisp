@@ -60,23 +60,19 @@
   (with-accessors ((buf crt:current-item)) *buffers*
     (crt:select-previous-item *buffers*)
     (setf (changedp buf) t) ;; flag current buffer for redisplay
-    (update-topic)
-    (update-output)
-    (update-status)))
+    (update)))
 
 (defun select-next-buffer ()
   (with-accessors ((buf crt:current-item)) *buffers*
     (crt:select-next-item *buffers*)
     (setf (changedp buf) t)
-    (update-topic)
-    (update-output)
-    (update-status)))
+    (update)))
 
 (defun select-last-buffer ()
   (with-accessors ((buf crt:current-item)) *buffers*
     (crt:select-last-item *buffers*)
     (setf (changedp buf) t) ;; flag current buffer for redisplay
-    (update-status)))
+    (update)))
 
 (defun push-to-buffer (string buffer)
   "Push a new line to the output buffer, to be displayed by display-buffer.
@@ -182,56 +178,74 @@ or the display function can be used which allows format controls."
   "Display the current buffer channel topic, if available."
   (let ((win (input-window *ui*))
         (wtp (topic-window *ui*)))
-    (if (target (current-buffer))
-        (let* ((chan (find (target (current-buffer))
-                           (channels (connection (current-buffer)))
-                           :key #'name :test #'string=))
-               (text (when chan (topic chan))))
-          (crt:save-excursion win
-            (crt:clear wtp)
-            (when text
-              (if (> (length text) (crt:width wtp))
-                  (crt:add-string wtp (subseq text 0 (crt:width wtp)))
-                  (crt:add-string wtp text))
-              (crt:refresh wtp))))
-        ;; if target is nil, clear the topic line (in a server buffer)
-        (crt:save-excursion win
-          (crt:clear wtp)
-          (crt:refresh wtp)))))
+    (crt:clear wtp)
+    (when (and (target (current-buffer))
+               (connection (current-buffer))
+               (connectedp (connection (current-buffer))))
+      (let* ((chan (find (target (current-buffer))
+                         (channels (connection (current-buffer)))
+                         :key #'name :test #'string=))
+             (text (when chan (topic chan))))
+        (when text
+          (if (> (length text) (crt:width wtp))
+              (crt:add-string wtp (subseq text 0 (crt:width wtp)))
+              (crt:add-string wtp text)))))))
 
 (defun update-output ()
   "If the current buffer has been changed, update the output window."
   (when (changedp (current-buffer))
-    (crt:save-excursion (input-window *ui*)
-      (display-buffer (current-buffer)))))
+    (display-buffer (current-buffer))))
 
 ;; called from: connect (command), error (event)
 (defun update-status ()
   "Set the status line of the current buffer."
   (with-accessors ((swin status-window)) *ui*
     (with-accessors ((nick nickname) (name name)) (connection (current-buffer))
-      ;; put the cursor back to the input window after updating the status window.
-      (crt:save-excursion (input-window *ui*)
-        (crt:clear swin)
-        (crt:move swin 0 2)
-        (format swin
-                (with-output-to-string (str)
-                  ;; the accessors dont work without a connection
-                  (if (connection (current-buffer))
-                      (when (and nick name)
-                        (format str "[~A ()] [~A" nick name))
-                      ;; default placeholders
-                      (format str "[~A ()] [~A" :nick :server))
-                  ;; if the current target is a channel, add it after the network
-                  (if (target (current-buffer))
-                      (format str "/~A ()]" (target (current-buffer)))
-                      (format str "]"))))
-        ;; add the current buffer number at the end of the line
-        (crt:move swin 0 (- (crt:width swin) 6))
-        (format swin "~5@A" (format nil "[~A]" (current-buffer-number)))
+      (crt:clear swin)
+      (crt:move swin 0 2)
+      (format swin
+              (with-output-to-string (str)
+                ;; the accessors dont work without a connection
+                (if (connection (current-buffer))
+                    (when (and nick name)
+                      (format str "[~A ()] [~A" nick name))
+                    ;; default placeholders
+                    (format str "[~A ()] [~A" :nick :server))
+                ;; if the current target is a channel, add it after the network
+                (if (target (current-buffer))
+                    (format str "/~A ()]" (target (current-buffer)))
+                    (format str "]"))))
+      ;; add the current buffer number at the end of the line
+      (crt:move swin 0 (- (crt:width swin) 6))
+      (format swin "~5@A" (format nil "[~A]" (current-buffer-number))))))
 
-        ;; after we refresh the window, return the cursor to the input line, use save-excursion in echo?
-        (crt:refresh swin)))))
+(defun update-buffers ()
+  "If there is a buffer list window, update its contents."
+  (with-accessors ((win buffers-window)) *ui*
+    (when win
+      (crt:clear win)
+      ;;(loop for i from 0 to (1- (length (crt:items *buffers*))) do
+      (dotimes (i (length (crt:items *buffers*)))
+        (crt:move win i 0)
+        ;; if the buffer has a target, write the target,
+        ;; otherwise the connection name, otherwise nil
+        (if (target (nth i (crt:items *buffers*)))
+            (format win " ~A" (target (nth i (crt:items *buffers*))))
+            (if (connection (nth i (crt:items *buffers*)))
+                (format win "~A" (name (connection (nth i (crt:items *buffers*)))))
+                (format win "nil")))
+        ;; highlight the current buffer
+        (when (= i (current-buffer-number))
+          (crt:move win i 0)
+          (crt:change-attributes win 13 '(:reverse)))))))
+
+(defun update ()
+  (crt:save-excursion (input-window *ui*)
+    (update-topic)
+    (update-output)
+    (update-status)
+    (update-buffers))
+  (refresh *ui*))
 
 ;; unused
 (defun lastn (n list)
