@@ -1,0 +1,28 @@
+;; -*- Lisp -*-
+
+;; ~/.gircrc is the girc initialization file.
+
+;; At the moment, it can be used to set global config variables,
+;; to call predefined client commands or to define new ones.
+
+(in-package de.anvi.girc.conf)
+
+(setq show-server-ping nil
+      show-buffer-list t
+      nickname "MyNick"
+      username "MyUser"
+      realname "My Real Name")
+
+(in-package de.anvi.girc.command)
+
+;; The server list can be displayed in the client with /server list.
+(server "add" "lib" "irc.libera.chat")
+(server "add" "libs" "irc.libera.chat" :ssl t :nickserv "MyNick:MyPasswd" :login-method :sasl)
+(server "add" "oftc" "irc.oftc.net")
+
+(defun testus ()
+  (echo t "hello"))
+
+;; Lisp functions can only be recognized as client commands after the
+;; are exported from the command package.
+(export 'testus)

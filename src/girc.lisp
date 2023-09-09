@@ -75,6 +75,12 @@ command line arguments, that server is immediately connected:
 For example:
 
   girc irc.libera.chat haoms
+  girc irc.libera.chat
+
+Instead of a hostname, the name of a server predefined in the init
+file can be passed:
+
+  girc libera
 
 |#
 
@@ -84,14 +90,25 @@ For example:
              (or (= (length sb-ext:*posix-argv*) 2)
                  (= (length sb-ext:*posix-argv*) 3)))
     (case (length sb-ext:*posix-argv*)
+      ;; girc [hostname]
       ;; girc irc.server.org
+      ;; girc [server name]
+      ;; girc libera
       (2 (let* ((host (nth 1 sb-ext:*posix-argv*))
                 (tokens (split-sequence:split-sequence #\. host))
                 (len (length tokens))
                 ;; parse out the host domain as the server name
-                (name (nth (- len 2) tokens)))
-           (cmd:server "add" name host)
-           (cmd:connect name)))
+                (name (when (> len 1)
+                        ;; only when there is more than one token.
+                        (nth (- len 2) tokens))))
+           (if (= len 1)
+               ;; if there is only one dot-separated token, it is an
+               ;; already added server name, not a full hostname
+               (cmd:connect host)
+               (progn
+                 (cmd:server "add" name host)
+                 (cmd:connect name)))))
+      ;; girc [hostname [nickname]]
       ;; girc irc.server.org nick
       (3 (let* ((host (nth 1 sb-ext:*posix-argv*))
                 (nick (nth 2 sb-ext:*posix-argv*))
