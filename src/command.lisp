@@ -235,12 +235,16 @@ Bound to #\newline in girc-input-map."
   (crt:exit-event-loop (input-field *ui*) nil))
 
 ;; /join #channel
+;; /join #chan1,#chan2
 (defun join (channel)
+  "Send a request to join the channel on the current server.
+
+The channel is joined when a join event returned by the server is
+handled.
+
+This has to be done by the event handler in case we can't join the
+channel and receive an error message, for example 474."
   (if channel
-      ;; send a join request to the server.
-      ;; the channel is actually joined when the join event is handled.
-      ;; we have to do this in the join event handler in case we cant
-      ;; join the channel and receive an error message, for example 474.
       (irc:join t channel)
       (echo t "-!- Required argument: /join <channel>")))
 
@@ -299,7 +303,8 @@ Bound to #\newline in girc-input-map."
       (echo t "-!- No target associated with the curent buffer.")))
 
 ;; /nick new-nick
-;; The changes to the client settings happen when the server replies.
+;; The changes to the client settings happen when the server replies,
+;; because it is possible that we cant use the new nick.
 (defun nick (new-nick)
   (irc:nick t new-nick))
 
@@ -317,8 +322,10 @@ Bound to #\newline in girc-input-map."
           (display t "-!- Connection ~A not connected." (name (connection (current-buffer)))))
       (display t "-!- Current buffer not associated with a connection.")))
 
+;; /part
 ;; /part #channel
-(defun part (channel)
+(defun part (&optional channel)
+  "Leave the given channel or the current channel, if no channel is given."
   (if channel
       (progn
         ;; if the given channel is the current target, kill the buffer when leaving the channel
@@ -339,11 +346,13 @@ Bound to #\newline in girc-input-map."
 
 ;; /quit
 (defun quit (&rest message)
+  "Quit the chat session, disconnect from the server."
   (irc:quit t (car message)))
 
 ;; /quote args*
 ;; /quote WHOIS McParen
 (defun quote (&rest args)
+  "Send a raw, unmodified irc message to the current server."
   (echo t "/quote" (car args))
   (send-raw-message t (car args)))
 
@@ -353,12 +362,18 @@ Bound to #\newline in girc-input-map."
 (defun whois (&rest args)
   (irc:whois t (car args)))
 
-(defun show (win)
-  (alexandria:switch (win :test #'string=)
+(defun show (name)
+  "Show the ui element given by its name."
+  (alexandria:switch (name :test #'string=)
     ("buffers"
-     (show-buffer-list t))))
+     (show-buffer-list t))
+    ("topic"
+     (show-topic-line t))))
 
-(defun hide (win)
-  (alexandria:switch (win :test #'string=)
+(defun hide (name)
+  "Hide the ui element given by its name."
+  (alexandria:switch (name :test #'string=)
     ("buffers"
-     (show-buffer-list nil))))
+     (show-buffer-list nil))
+    ("topic"
+     (show-topic-line nil))))

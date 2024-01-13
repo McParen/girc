@@ -1,37 +1,40 @@
 (in-package :de.anvi.girc)
 
-;; TODO 200412 allow maps to inherit bindings from other maps.
-;; new bindings overwrite new bindings.
-;; passed to the field during initialization
-
-(crt:define-keymap girc-input-map
-  ;; we dont need the irc input field to accept the input and exit the
-  ;; client, use /exit or add some other binding.
+(crt:define-keymap girc-input-map ()
   ;; C-a = ^A = #\soh = 1 = start of heading
-  ;;(#\soh 'crt::accept)
+  (#\soh 'crt:move-start-of-line)
 
   ;; C-x = cancel = CAN = #\can
-  (#\can 'crt::cancel)
+  (#\can 'crt:cancel)
 
   ;; C-r = reset = DC2 = #\dc2
-  (#\dc2 'crt::reset)
+  (#\dc2 'crt:reset)
 
-  (:key-arrow-left  'crt::move-previous-char)
-  (:key-arrow-right 'crt::move-next-char)
+  (:key-arrow-left  'crt:move-previous-char)
+  (:key-arrow-right 'crt:move-next-char)
 
-  (:key-backspace   'crt::delete-previous-char)
-  (:key-delete-char 'crt::delete-next-char)
+  (:key-backspace   'crt:delete-previous-char)
+  (:key-delete-char 'crt:delete-next-char)
 
   (:key-insert-char (lambda (field)
                       (crt:toggle-insert-mode field)))
 
-  ;; toggle show buffer list
+  ;; toggle the display of the topic line
+  (:key-f3 (lambda ()
+             (setf conf:show-topic-line (not conf:show-topic-line))
+             (show-topic-line conf:show-topic-line)))
+
+  ;; toggle the display of the buffer list
   (:key-f4 (lambda ()
              (setf conf:show-buffer-list (not conf:show-buffer-list))
              (show-buffer-list conf:show-buffer-list)))
 
-  ;; TODO 201122 only graphic chars should be added, what about :up?
-  (t 'crt::field-add-char)
+  ;; part current channel
+  (:key-f7  'cmd:part)
+  ;; exit girc
+  (:key-f12 'cmd:exit)
+
+  (t 'crt:field-add-char)
 
   ;; connection.lisp
   ;; instead of processed during a nil event, this should be moved to a worker thread.
@@ -84,12 +87,13 @@ file can be passed:
 
 |#
 
-(defun parse-posix-argv ()
+(defun handle-command-args ()
   ;; only parse if called from the girc binary with 1 or 2 args.
   (when (and (search "girc" (nth 0 sb-ext:*posix-argv*))
              (or (= (length sb-ext:*posix-argv*) 2)
                  (= (length sb-ext:*posix-argv*) 3)))
     (case (length sb-ext:*posix-argv*)
+      ;; the first argument is the hostname to connect or the name of a server predefined in .gircrc
       ;; girc [hostname]
       ;; girc irc.server.org
       ;; girc [server name]
@@ -108,6 +112,7 @@ file can be passed:
                (progn
                  (cmd:server "add" name host)
                  (cmd:connect name)))))
+      ;; the second argument is the nickname used to connect to the server
       ;; girc [hostname [nickname]]
       ;; girc irc.server.org nick
       (3 (let* ((host (nth 1 sb-ext:*posix-argv*))
@@ -126,7 +131,7 @@ file can be passed:
                              (print c))))
     (setq *ui* (make-instance 'user-interface))
     (load-init-file)
-    (parse-posix-argv)
+    (handle-command-args)
     (when conf:show-buffer-list
       (show-buffer-list t))
     (update)
@@ -147,7 +152,7 @@ Omitting executable t produces a core which has to be run with sbcl --core."
 
 (defun display-logo ()
   "Display the ASCII logo line by line."
-  (loop for i in (split-sequence:split-sequence #\newline *girc-logo* :remove-empty-subseqs t) do
+  (dolist (i (split-sequence:split-sequence #\newline *girc-logo* :remove-empty-subseqs t))
     (echo t i)))
 
 (defun display-info ()

@@ -79,7 +79,8 @@
    layout
    output-window
    input-field
-   show-buffer-list))
+   show-buffer-list
+   show-topic-line))
 
 (cl:defpackage :de.anvi.girc.irc
   (:documentation
@@ -123,7 +124,8 @@
    username
    realname
    show-server-ping
-   show-buffer-list))
+   show-buffer-list
+   show-topic-line))
 
 (cl:defpackage :de.anvi.girc.command
   (:documentation
@@ -178,7 +180,8 @@
    layout
    output-window
    input-field
-   show-buffer-list)
+   show-buffer-list
+   show-topic-line)
 
   ;; shadow command names that collide with standard cl functions
   (:shadow

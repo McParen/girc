@@ -20,3 +20,6 @@
 
 (defparameter show-buffer-list nil
   "Set to t to show the list of buffers in a side window.")
+
+(defparameter show-topic-line t
+  "Set to t to show the topic line at the top of the screen.")

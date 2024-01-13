@@ -454,7 +454,12 @@ For now, the raw irc message will simply be displayed in the output window."
 ;; Number:  250
 ;; Event:   RPL_STATSCONN
 ;; Example: :tantalum.libera.chat 250 haom :Highest connection count: 4414 (4413 clients) (289303 connections received)
-(bind-event rpl-statsconn 'display-event-text)
+(define-event rpl-statsconn (buffer text connection)
+  (echo buffer text)
+  (with-slots (autojoin) connection
+    ;; after the last login reply, if there are autojoin channels, join them.
+    (when autojoin
+      (irc:join t autojoin))))
 
 
 ;;; Replies sent as response to a command

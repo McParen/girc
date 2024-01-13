@@ -176,20 +176,20 @@ or the display function can be used which allows format controls."
 
 (defun update-topic ()
   "Display the current buffer channel topic, if available."
-  (let ((win (input-window *ui*))
-        (wtp (topic-window *ui*)))
-    (crt:clear wtp)
-    (when (and (target (current-buffer))
-               (connection (current-buffer))
-               (connectedp (connection (current-buffer))))
-      (let* ((chan (find (target (current-buffer))
-                         (channels (connection (current-buffer)))
-                         :key #'name :test #'string=))
-             (text (when chan (topic chan))))
-        (when text
-          (if (> (length text) (crt:width wtp))
-              (crt:add-string wtp (subseq text 0 (crt:width wtp)))
-              (crt:add-string wtp text)))))))
+  (let ((wtp (topic-window *ui*)))
+    (when wtp
+      (crt:clear wtp)
+      (when (and (target (current-buffer))
+                 (connection (current-buffer))
+                 (connectedp (connection (current-buffer))))
+        (let* ((chan (find (target (current-buffer))
+                           (channels (connection (current-buffer)))
+                           :key #'name :test #'string=))
+               (text (when chan (topic chan))))
+          (when text
+            (if (> (length text) (crt:width wtp))
+                (crt:add-string wtp (subseq text 0 (crt:width wtp)))
+                (crt:add-string wtp text))))))))
 
 (defun update-output ()
   "If the current buffer has been changed, update the output window."

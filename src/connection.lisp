@@ -89,7 +89,7 @@ Libera) forward the connection password to NickServ identify if it is given in
 the form nickname:password.
 
 This client will send the NickServ login credentials as the server password if
-the login-method is set to :pass, which is currently the default.")
+the login-method is set to :pass.")
 
    (nickserv-account
     :initarg       :nickserv-account
@@ -147,11 +147,21 @@ is added, which means that a new reply sequence to LIST has been started.
 
 It is set to t by rpl-listend (323).")
 
+   (autojoin
+    :initarg       :autojoin
+    :initform      nil
+    :type          (or null string)
+    :documentation
+    "Comma-separated list of channel names to join upon a successful connection.
+
+The channels are joined after rpl-statsconn, the last reply after a successful
+login, is received.")
+
    (channels
     :initform      nil
     :accessor      channels
     :type          (or null cons)
-    :documentation "List of joined channels."))
+    :documentation "List of joined channel objects."))
 
   (:documentation "Parameters necessary to establish a connection to an IRC server."))
 

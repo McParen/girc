@@ -34,11 +34,13 @@
                                      :cursor-visible t
                                      :enable-colors nil
                                      :enable-function-keys t))
-
-    (setf layout (make-instance 'crt::column-layout :parent main-screen :children
+    (setf layout (make-instance 'crt:column-layout :parent main-screen :children
                                 (list (list 'crt:window :name :topic :height 1)
-                                      (make-instance 'crt::row-layout :children
-                                                     (list (list 'crt:window :name :output)))
+                                      (make-instance 'crt:row-layout :name :lay1 :children
+                                                     (list (list 'crt:window :name :output)
+                                                           ;; the buffers win is added dynamically
+                                                           ;;(list 'crt:window :name :buffers :width 13)
+                                                           ))
                                       (list 'crt:window :name :status :height 1)
                                       (list 'crt:window :name :input :height 1 :enable-function-keys t))))
     ;; calc window positions and dimensions
@@ -89,43 +91,48 @@
     (mapc #'close (crt:leaves layout))
     (crt:end-screen)))
 
-(defun find-node (name1 tree)
-  "Return the first node (or leaf) that matches the name."
-  (labels ((dfs (name node)
-             ;; check if we found a node by name
-             (when (and node
-                        (eq name (crt:name node)))
-               (return-from find-node node))
-             ;; if a node contains children
-             (when (crt:children node)
-               (dolist (ch (crt:children node))
-                 (when ch
-                   (if (typep ch 'crt::node)
-                       (dfs name ch)
-                       ;; check the leaf
-                       (when (eq name (crt:name ch))
-                         (return-from find-node ch))))))))
-    (dfs name1 tree)))
-
-;; (let ((wbuf (de.anvi.girc::buffer-window de.anvi.girc::*ui*)))
 ;; used in key bindings and commands
 (defun show-buffer-list (&optional (flag t))
   "If t, show the buffers window, if nil, hide it."
-  (let ((wbuf (find-node :buffers (slot-value *ui* 'layout))))
+  (let ((wbuf (crt:find-node :buffers (slot-value *ui* 'layout))))
     (if flag
         ;; add only if the window doesnt only exist.
         (unless wbuf
-          (crt:add-child (nth 1 (crt:children (slot-value *ui* 'layout)))
+          (crt:add-child (crt:find-node :lay1 (slot-value *ui* 'layout))
                          (list 'crt:window :name :buffers :width 13))
           (crt:calculate-layout (slot-value *ui* 'layout))
           (crt:initialize-leaves (slot-value *ui* 'layout)))
         ;; only close, if the window exists.
         (when wbuf
           (close wbuf)
-          (setf (crt:children (nth 1 (crt:children (slot-value *ui* 'layout))))
-                (remove wbuf (crt:children (nth 1 (crt:children (slot-value *ui* 'layout))))))
+          (setf (crt:children (crt:find-node :lay1 (slot-value *ui* 'layout)))
+                (remove wbuf (crt:children (crt:find-node :lay1 (slot-value *ui* 'layout)))))
           (crt:calculate-layout (slot-value *ui* 'layout)))))
   ;; redraw the buffer and resize the input field
   (setf (changedp (current-buffer)) t
         (crt:width (input-field *ui*)) (crt:width (input-window *ui*)))
+  (update))
+
+(defun show-topic-line (&optional (flag t))
+  "If t, show the buffers window, if nil, hide it."
+  (let ((wtop (crt:find-node :topic (slot-value *ui* 'layout))))
+    (if flag
+        ;; only add if it doesnt exist
+        (unless wtop
+          (setf (crt:children (slot-value *ui* 'layout))
+                (cons (list 'crt:window :name :topic :height 1)
+                      (crt:children (slot-value *ui* 'layout))))
+          (crt:calculate-layout (slot-value *ui* 'layout))
+          (crt:initialize-leaves (slot-value *ui* 'layout))
+
+          ;; reverse the topic display after initializing the window object
+          (setf (crt:background (crt:find-node :topic (slot-value *ui* 'layout)))
+                (make-instance 'crt:complex-char :simple-char #\space :attributes '(:reverse))))
+        ;; only close if it exists
+        (when wtop
+          (close wtop)
+          (setf (crt:children (slot-value *ui* 'layout))
+                (remove wtop (crt:children (slot-value *ui* 'layout))))
+          (crt:calculate-layout (slot-value *ui* 'layout)))))
+  (setf (changedp (current-buffer)) t)
   (update))

@@ -262,12 +262,13 @@ If there are more parameters than tokens, they are optional, so return nil
 
 (parse-user-arguments '(a b c) "foo")
 => ("foo" NIL NIL)
+
 (parse-user-arguments '(a b &rest c) "foo bar")
 => ("foo" "bar" "")
 
 Neither optional nor key arguments support default values yet.
-
-So this doesnt work &optional (a 1) or &key (min 10).
+So this doesnt work: &optional (a 1) or &key (min 10).
+Default values have to be manually provided within the functions.
 
 |#
 
@@ -292,18 +293,18 @@ So this doesnt work &optional (a 1) or &key (min 10).
           (equalp (parse-user-arguments '(a b &rest c) "foo bar baz qux")
                   (list "foo" "bar" "baz qux")))
   ;; 5. rest parameter but no rest arguments
-  ;; the rest parameter simply returns nil
+  ;; a missing rest argument simple returns nothing
   (format t "5.~A "
           (equalp (parse-user-arguments '(a b &rest c) "foo bar")
-                  (list "foo" "bar" nil)))
+                  (list "foo" "bar")))
   ;; 6. rest parameter but no rest arguments
   (format t "6.~A "
           (equalp (parse-user-arguments '(&rest a) "")
-                  (list nil)))
+                  nil))
   ;; 7. no arguments
   (format t "7.~A "
           (equalp (parse-user-arguments '(a b c &rest d) "")
-                  (list nil nil nil nil)))
+                  (list nil nil nil)))
   ;; 8. no parameters
   ;; returns nil, or an empty list
   (format t "8.~A "
@@ -311,7 +312,7 @@ So this doesnt work &optional (a 1) or &key (min 10).
                   nil))
   ;; 9. keyword parameters
   ;; instead of returning all rest args in a single string, when the &key
-  ;; keyword is present in the lambda list, the args are returned as :k v :k v
+  ;; keyword is present in the lambda list, the args are parsed and returned as :k v :k v
   (format t "9.~A "
           (equalp (parse-user-arguments '(a b &rest c &key d e f) "a b :c 1 :d 2")
                   (list "a" "b" :C 1 :D 2)))
@@ -320,7 +321,7 @@ So this doesnt work &optional (a 1) or &key (min 10).
   (format t "10.~A "
           (equalp (parse-user-arguments '(a b &rest c) "a b :c 1 :d 2")
                   (list "a" "b" ":c 1 :d 2")))
-  ;; 11. the same as 9 bit without the &rest keyword
+  ;; 11. the same as 9, but without the &rest keyword
   (format t "11.~A "
           (equalp (parse-user-arguments '(a b &key d e f) "a b :c 1 :d 2")
                   (list "a" "b" :C 1 :D 2)))
@@ -415,17 +416,41 @@ for each."
                 (append reqs (make-list (- nreq (length reqs))))
                 reqs))))))
 
+#|
+
+Additional parameters are silently ignored:
+
+CL-USER> (parse-argument-bind (a b c) "foo bar baz qux"
+           (list a b c))
+("foo" "bar" "baz")
+
+The rest arg is put into a single string:
+
+CL-USER> (parse-argument-bind (a b &rest c) "foo bar :baz 2 :d 1"
+           (list a b c))
+("foo" "bar" (":baz 2 :d 1"))
+
+If there is a key in addition to rest, the rest string is parsed:
+
+CL-USER> (parse-argument-bind (a b &rest c &key d baz) "foo bar :baz 2 :d 1"
+           (list a b c d baz))
+("foo" "bar" (:BAZ 2 :D 1) 1 2)
+|#
+
 (defmacro parse-argument-bind (lbd str &body body)
   "Parse space-separated words from string and bind them to the given parameters.
 
-If the last parameter is designed as &rest, collect all remaining words into it."
-  (let ((keywords (if (member '&rest lbd)
-                      (remove '&rest lbd)
-                      lbd)))
-      ;; remove the real rest keyword to avoid placing the rest string in a list.
-      `(destructuring-bind ,keywords
-           (parse-user-arguments ',lbd ,str)
-         ,@body)))
+If the last keyword is &rest, collect all remaining words into it as a
+single string.
+
+If the last keyword is &key, parse the rest string as if it is a sequence of
+keys and values :k1 v1 :k2 v2.
+
+Note that if we have a &rest but no &key, the underlying destructuring-bind
+still puts that single string into a list."
+  `(destructuring-bind ,lbd
+       (parse-user-arguments ',lbd ,str)
+     ,@body))
 
 (defun string-car (str)
   "1 2 3 => 1"
