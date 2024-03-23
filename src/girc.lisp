@@ -10,29 +10,29 @@
   ;; C-r = reset = DC2 = #\dc2
   (#\dc2 'crt:reset)
 
-  (:key-arrow-left  'crt:move-previous-char)
-  (:key-arrow-right 'crt:move-next-char)
+  (:left  'crt:move-previous-char)
+  (:right 'crt:move-next-char)
 
-  (:key-backspace   'crt:delete-previous-char)
-  (:key-delete-char 'crt:delete-next-char)
+  (:backspace 'crt:delete-previous-char)
+  (:delete    'crt:delete-next-char)
 
-  (:key-insert-char (lambda (field)
-                      (crt:toggle-insert-mode field)))
+  (:insert (lambda (field)
+             (crt:toggle-insert-mode field)))
 
   ;; toggle the display of the topic line
-  (:key-f3 (lambda ()
-             (setf conf:show-topic-line (not conf:show-topic-line))
-             (show-topic-line conf:show-topic-line)))
+  (:f3 (lambda ()
+         (setf conf:show-topic-line (not conf:show-topic-line))
+         (show-topic-line conf:show-topic-line)))
 
   ;; toggle the display of the buffer list
-  (:key-f4 (lambda ()
-             (setf conf:show-buffer-list (not conf:show-buffer-list))
-             (show-buffer-list conf:show-buffer-list)))
+  (:f4 (lambda ()
+         (setf conf:show-buffer-list (not conf:show-buffer-list))
+         (show-buffer-list conf:show-buffer-list)))
 
   ;; part current channel
-  (:key-f7  'cmd:part)
+  (:f7  'cmd:part)
   ;; exit girc
-  (:key-f12 'cmd:exit)
+  (:f12 'cmd:exit)
 
   (t 'crt:field-add-char)
 
@@ -140,7 +140,7 @@ file can be passed:
     (finalize-user-interface *ui*)))
 
 #+(and sbcl sb-core-compression)
-(defun build ()
+(defun make ()
   "Build the girc executable.
 
 Requires libzstd.so to be available, produces an approx. 13 MB binary vs 56 MB uncompressed.

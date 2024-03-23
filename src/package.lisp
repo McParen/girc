@@ -13,7 +13,7 @@
   (:export
    ;; external interface for starting the client
    main
-   build
+   make
 
    ;; functions that have to be exported from the core package
    ;; so they can be used within the command package:
