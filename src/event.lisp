@@ -288,6 +288,8 @@ For now, the raw irc message will simply be displayed in the output window."
   (dolist (buffer (crt:items *buffers*))
     (when (and (eq connection (connection buffer))
                (target buffer)
+               ;; check if target is a channel
+               (find-channel (target buffer) connection)
                (member prefix-nick
                        (nicknames (find-channel (target buffer) connection))
                        :test #'string=))
@@ -305,6 +307,8 @@ For now, the raw irc message will simply be displayed in the output window."
   (dolist (buffer (crt:items *buffers*))
     (when (and (eq connection (connection buffer))
                (target buffer)
+               ;; check if target is a channel
+               (find-channel (target buffer) connection)
                (member prefix-nick
                        (nicknames (find-channel (target buffer) connection))
                        :test #'string=))

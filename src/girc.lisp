@@ -87,41 +87,101 @@ file can be passed:
 
 |#
 
+(opts:define-opts
+  (:name        :help
+   :short       #\h
+   :long        "help"
+   :description "Show a short list of command-line options.")
+  (:name        :version
+   :short       #\v
+   :long        "version"
+   :description "Show version information.")
+  (:name        :server
+   :short       #\s
+   :long        "server"
+   :meta-var    "<server>"
+   :arg-parser #'identity
+   :description "Connect to the server given by its name or hostname.")
+  (:name        :port
+   :short       #\p
+   :long        "port"
+   :meta-var    "<port>"
+   :arg-parser  #'parse-integer
+   :description "Use <port> instead of the default port number.")
+  (:name        :nick
+   :short       #\n
+   :long        "nick"
+   :meta-var    "<nick>"
+   :arg-parser #'identity
+   :description "Nickname to use for the <server> connection.")
+  (:name        :auth
+   :short       #\a
+   :long        "auth"
+   :meta-var    "<user>:<pass>"
+   :arg-parser #'identity
+   :description "Authentication credentials to login to an account.")
+  (:name        :method
+   :short       #\m
+   :long        "method"
+   :meta-var    "<method>"
+   :arg-parser #'identity
+   :description "Method to use to login to the account.")
+  (:name        :ssl
+   :long        "ssl"
+   :description "Enable SSL encryption for the connection."))
+
+(defun print-help-message ()
+  (opts:describe
+   :prefix "girc is a basic IRC client for the terminal."
+   :suffix
+"Optional free args:
+  <server> Connect to the server given by its name or hostname.
+  <nick>   Nickname to use for the <server> connection."
+   :usage-of "girc"
+   :args "[<server> [<nick>]]"))
+
+(defun hostname-p (str)
+  "If str is a hostname, return the domain to use as server name.
+
+It is a hostname if it contains dots, for example irc.libera.chat.
+
+If str is not a hostname, return nil."
+  (when (position #\. str)
+    (let* ((tokens (split-sequence:split-sequence #\. str))
+           (count (length tokens))
+           (name (nth (- count 2) tokens)))
+      name)))
+
+;; args handled after the UI was initialized and the init file loaded.
 (defun handle-command-args ()
-  ;; only parse if called from the girc binary with 1 or 2 args.
-  (when (and (search "girc" (nth 0 sb-ext:*posix-argv*))
-             (or (= (length sb-ext:*posix-argv*) 2)
-                 (= (length sb-ext:*posix-argv*) 3)))
-    (case (length sb-ext:*posix-argv*)
-      ;; the first argument is the hostname to connect or the name of a server predefined in .gircrc
-      ;; girc [hostname]
-      ;; girc irc.server.org
-      ;; girc [server name]
-      ;; girc libera
-      (2 (let* ((host (nth 1 sb-ext:*posix-argv*))
-                (tokens (split-sequence:split-sequence #\. host))
-                (len (length tokens))
-                ;; parse out the host domain as the server name
-                (name (when (> len 1)
-                        ;; only when there is more than one token.
-                        (nth (- len 2) tokens))))
-           (if (= len 1)
-               ;; if there is only one dot-separated token, it is an
-               ;; already added server name, not a full hostname
-               (cmd:connect host)
-               (progn
-                 (cmd:server "add" name host)
-                 (cmd:connect name)))))
-      ;; the second argument is the nickname used to connect to the server
-      ;; girc [hostname [nickname]]
-      ;; girc irc.server.org nick
-      (3 (let* ((host (nth 1 sb-ext:*posix-argv*))
-                (nick (nth 2 sb-ext:*posix-argv*))
-                (tokens (split-sequence:split-sequence #\. host))
-                (len (length tokens))
-                (name (nth (- len 2) tokens)))
-           (cmd:server "add" name host :nickname nick)
-           (cmd:connect name))))))
+  ;; check if the exe is girc
+  (when (search "girc" (nth 0 sb-ext:*posix-argv*))
+    (let (server
+          nick)
+      (multiple-value-bind (opts free-args) (opts:get-opts)
+        ;; check the free args first, which means the opts --server and --nick
+        ;; override the free args.
+        (when free-args
+          (if (= (length free-args) 2)
+              (setq server (nth 0 free-args)
+                    nick (nth 1 free-args))
+              (setq server (nth 0 free-args))))
+        (when (getf opts :server)
+          (setq server (getf opts :server)))
+        (when (getf opts :nick)
+          (setq nick (getf opts :nick))))
+      ;; if the given server is a hostname, add it to the server list first
+      (when (hostname-p server)
+        (if nick
+            (cmd:server "add" (hostname-p server) server :nickname nick)
+            (cmd:server "add" (hostname-p server) server)))
+      ;; connect the server by its name
+      (let ((name (if (hostname-p server)
+                      (hostname-p server)
+                      server)))
+        ;; connect directly only if a server has been given on the command line
+        (when server
+          (cmd:connect name))))))
 
 (defun main ()
   "This is the main entry point. After quickloading girc, run the client with (girc:main)."
@@ -129,15 +189,33 @@ file can be passed:
                              (declare (ignore h))
                              (finalize-user-interface *ui*)
                              (print c))))
-    (setq *ui* (make-instance 'user-interface))
-    (load-init-file)
-    (handle-command-args)
-    (when conf:show-buffer-list
-      (show-buffer-list t))
-    (update)
-    ;; run the main event loop on the input field
-    (crt:edit (input-field *ui*))
-    (finalize-user-interface *ui*)))
+    (multiple-value-bind (opts free-args) (opts:get-opts)
+      (if (and opts
+               (or (getf opts :help)
+                   (getf opts :version)))
+
+          ;; handle some command arge before initializing the ui and loading the gircrc.
+          ;; if --help or --version print a message and don't start the ui.
+          (progn
+            (when (getf opts :help)
+              (print-help-message))
+            (when (getf opts :version)
+              (princ "girc v0.0.1")
+              (terpri))
+            (when (getf opts :server-list)
+              (cmd:server "list" nil nil)))
+
+          ;; start UI, load init, then handle the remaining command args.
+          (progn
+            (setq *ui* (make-instance 'user-interface))
+            (load-init-file)
+            (handle-command-args)
+            (when conf:show-buffer-list
+              (show-buffer-list t))
+            (update)
+            ;; run the main event loop on the input field
+            (crt:edit (input-field *ui*))
+            (finalize-user-interface *ui*))))))
 
 #+(and sbcl sb-core-compression)
 (defun make ()
@@ -148,7 +226,10 @@ Requires libzstd.so to be available, produces an approx. 13 MB binary vs 56 MB u
 Builds the executable in the current directory, asdf:make puts it into src/
 
 Omitting executable t produces a core which has to be run with sbcl --core."
-  (sb-ext:save-lisp-and-die "girc" :toplevel #'girc:main :executable t :compression 22))
+  (sb-ext:save-lisp-and-die "girc" :toplevel #'girc:main
+                                   :executable t
+                                   :compression 22
+                                   :save-runtime-options t))
 
 (defun display-logo ()
   "Display the ASCII logo line by line."
@@ -157,7 +238,7 @@ Omitting executable t produces a core which has to be run with sbcl --core."
 
 (defun display-info ()
   (let* ((box (make-instance 'dlg:msgbox
-                             :title "gIRC v0.0.1"
+                             :title "girc v0.0.1"
                              :message *girc-logo*
                              :wrap-message nil
                              :width 45

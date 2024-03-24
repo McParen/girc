@@ -5,7 +5,7 @@
   :maintainer "Anton Vidovic"
   :licence "MIT"
   :version "0.0.1"
-  :depends-on (:alexandria :split-sequence :usocket :croatoan :cl+ssl)
+  :depends-on (:alexandria :split-sequence :usocket :croatoan :cl+ssl :unix-opts)
   :pathname "src/"
   :serial t
   :components
