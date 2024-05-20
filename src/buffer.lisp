@@ -1,25 +1,18 @@
 (in-package :de.anvi.girc)
 
-(defclass buffer ()
-  ((connection
-    :initarg       :connection
-    :initform      nil
-    :accessor      connection
-    :type          (or null connection)
-    :documentation "Pointer to the connection object associated with the buffer. Set by /connect.")
-
-   (target
-    :initarg       :target
-    :initform      nil
-    :accessor      target
-    :type          (or null string)
-    :documentation "Target channel of the messages sent and received form the connection.")
-
-   (changedp
+(defclass buffer (crt:node)
+  ((changedp
     :initform      nil
     :accessor      changedp
     :type          boolean
     :documentation "Flag to denote that the buffer was changed and should be redisplayed by update-output.")
+
+   ;; needed for the cursor
+   (currentp
+    :initform      nil
+    :type          boolean
+    :accessor      currentp
+    :documentation "Flag denoting whether the buffer is currently selected in the buffer tree.")
 
    (max-length
     :initform      100
@@ -36,43 +29,261 @@
     :type          (or null cons)
     :documentation "List of strings the buffer contains."))
 
-  (:documentation "A buffer is a list of strings to be displayed to the output window."))
+  (:documentation "A buffer contains a list of strings to be displayed to the output window."))
 
-(defparameter *buffers* (make-instance 'crt:collection :items (list (make-instance 'buffer)))
-  "Collection of buffers.")
+(defclass connection-buffer (buffer)
+  ((connection
+    :initarg       :connection
+    :initform      nil
+    :type          (or null connection)
+    :documentation "Pointer to the connection object associated with the buffer. Set by /connect."))
+
+  (:documentation ""))
+
+(defclass target-buffer (buffer)
+  ((target
+    :initarg       :target
+    :initform      nil
+    :accessor      target
+    :type          (or null string)
+    :documentation "Target channel or nickname (for a query) for the messages sent to and received form the connection."))
+
+  (:documentation ""))
+
+(defgeneric connection (buffer)
+  (:documentation ""))
+
+(defmethod connection ((obj buffer))
+  nil)
+
+(defmethod connection ((obj connection-buffer))
+  (slot-value obj 'connection))
+
+(defmethod connection ((obj target-buffer))
+  (slot-value (crt:parent obj) 'connection))
+
+(defgeneric (setf connection) (con buffer)
+  (:documentation ""))
+
+(defmethod (setf connection) (con (obj connection-buffer))
+  (setf (slot-value obj 'connection) con))
+
+(defmethod (setf connection) (con (obj target-buffer))
+  (setf (slot-value (crt:parent obj) 'connection) con))
+
+(defparameter *buffers* (make-instance 'buffer)
+  "Main client buffer not associated with a server, can't be killed.
+
+Its children are server buffers and their children are channel and
+query buffers.")
+
+(defstruct (cursor (:conc-name nil)
+                   (:constructor %make-cursor))
+  node)
+
+(defun make-cursor (node)
+  ;; select the root node when the cursor is initialized.
+  (setf (currentp node) t)
+  (%make-cursor :node node))
+
+(defparameter *buffer-tree-cursor* (make-cursor *buffers*))
 
 (defun current-buffer ()
-  (crt:current-item *buffers*))
+  (node *buffer-tree-cursor*))
 
-(defun current-buffer-number ()
-  (crt:current-item-number *buffers*))
+#|
+ dfs pre-order traversal:
+ - if there are next siblings, go to next
+ - if we are at the last sibling, go to previous
+ - if there are no previous, go to parent
+|#
+(defun next (cursor)
+  (with-accessors ((node node)) cursor
+    (with-accessors ((children crt:children)) node
+      (if children
+          (setf (currentp node) nil
+                node (car children)
+                (currentp node) t)
+          (when (crt:parent node)
+            (let ((n (position node (crt:children (crt:parent node)))))
+              (if (and n (> (length (crt:children (crt:parent node))) (1+ n)))
+                  (setf (currentp node) nil
+                        node (nth (1+ n) (crt:children (crt:parent node)))
+                        (currentp node) t)
+                  (when (crt:parent node)
+                    (labels ((step-up ()
+                               (when (crt:parent node)
+                                 (setf node (crt:parent node))
+                                 (when (crt:parent node)
+                                   (let ((n (position node (crt:children (crt:parent node)))))
+                                     (if (and n (> (length (crt:children (crt:parent node))) (1+ n)))
+                                         (setf node (nth (1+ n) (crt:children (crt:parent node))))
+                                         (step-up)))))))
+                      (setf (currentp node) nil)
+                      (step-up)
+                      (setf (currentp node) t))))))))))
+#|
+ dfs pre-order backwards:
+ - if there is a previos sibling, go to previous
+ - if the previous sibling has children, go to last child
+ - if there are no previous, go to parent
+|#
+(defun prev (cursor)
+  (with-accessors ((node node)) cursor
+    (with-accessors ((children crt:children)) node
+      (if (crt:parent node)
+          (let ((n (position node (crt:children (crt:parent node)))))
+            (if (and n (> n 0))
+                (progn
+                  (setf (currentp node) nil)
+                  (setf node (nth (1- n) (crt:children (crt:parent node))))
+                  (when (crt:children node)
+                    (setf node (nth (1- (length (crt:children node))) (crt:children node))))
+                  (setf (currentp node) t))
+                (progn
+                  (setf (currentp node) nil)
+                  (setf node (crt:parent node))
+                  (setf (currentp node) t))))
+          ;; if there is no parent, were at the root node
+          ;; then go to the last child of the last child
+          (when (crt:children node)
+            (setf (currentp node) nil)
+            (setf node (nth (1- (length (crt:children node))) (crt:children node)))
+            (when (crt:children node)
+              (setf node (nth (1- (length (crt:children node))) (crt:children node))))
+            (setf (currentp node) t))))))
+
+(defun remv (cursor)
+  "Remove a buffer with all children."
+  (with-accessors ((node node)) cursor
+    (with-accessors ((children crt:children)) node
+      (when (crt:parent node)
+        (let ((n (position node (crt:children (crt:parent node)))))
+          (if (and n (> (length (crt:children (crt:parent node))) (1+ n)))
+              ;; if there are next siblings, go to next, then remove previous
+              (progn
+                (setf (currentp node) nil)
+                (setf node (nth (1+ n) (crt:children (crt:parent node))))
+                (setf (currentp node) t)
+                (setf (crt:children (crt:parent node))
+                      (delete (nth n (crt:children (crt:parent node)))
+                              (crt:children (crt:parent node)))))
+              ;; check if we have previous sibling or we are at the last child
+              (if (> (length (crt:children (crt:parent node))) 1)
+                  ;; if there is a previous sibling, go to last child of previous sibling, then remove last.
+                  (progn
+                    (setf (currentp node) nil)
+                    ;; go to previous sibling
+                    (setf node (nth (1- n) (crt:children (crt:parent node))))
+                    ;; remove nth
+                    (setf (crt:children (crt:parent node))
+                          (delete (nth n (crt:children (crt:parent node)))
+                                  (crt:children (crt:parent node))))
+                    ;; then go to last child of previous sibling
+                    (when (crt:children node)
+                      (setf node (nth (1- (length (crt:children node))) (crt:children node))))
+                    (setf (currentp node) t))
+                  ;; if there is no previous sibling, delete the last which means set children to nil.
+                  (progn
+                    (setf (currentp node) nil)
+                    (setf node (crt:parent node))
+                    (setf (currentp node) t)
+                    (setf (crt:children node) nil)))))))))
+
+(defun find-buffer (connection-name &optional target)
+  "Check if a server or target buffer exists and return it.
+
+If the correct buffer is not found, return nil."
+  (when (crt:children *buffers*)
+    (dolist (i (crt:children *buffers*))
+      ;; a server buffer can only exist if a server connection
+      (when (string-equal connection-name (name (connection i)))
+        (if target
+            ;; if a target is given, look for its buffer.
+            (dolist (j (crt:children i))
+              (when (string-equal target (target j))
+                (return-from find-buffer j)))
+            ;; if a target was not given, return a server buffer.
+            (return-from find-buffer i))))))
+
+(defun get-buffer (connection-name target)
+  "Return the most appropriate buffer for a message.
+
+Return a target buffer if it exists, otherwise return its parent
+server buffer.
+
+This function ensures that some buffer will be returned in which
+the message can be displayed."
+  (if (find-buffer connection-name target)
+      (find-buffer connection-name target)
+      (find-buffer connection-name)))
+
+(defun add-server-buffer (&optional server-name)
+  "Take an existing server name, add a new server buffer."
+  (if server-name
+      ;; server name given, check if the server exists
+      (let ((con (find-connection server-name)))
+        (if con
+            ;; server found
+            ;; check if server buffer exists
+            (if (find-buffer server-name)
+                (echo t "-!- Buffer already exists:" server-name)
+                ;; Add new server buffer
+                (progn
+                  (push (make-instance 'connection-buffer
+                                       :connection con
+                                       :parent *buffers*)
+                        (crt:children *buffers*))
+                  (setf (crt:children *buffers*) (nreverse (crt:children *buffers*)))))
+            ;; server not found.
+            (echo t "-!- Server unknown:" server-name)))
+      (echo t "-!- Server not given.")))
+
+(defun add-target-buffer (server-name &optional target)
+  "Take a server name and a channel, add a new channel buffer."
+  (if (and target
+           (find-buffer server-name target))
+      ;; warn that buffer exists
+      (echo t "-!- Buffer already exists:" server-name target)
+      ;; if the buffer doesnt already exist.
+      (let ((buf (find-buffer server-name)))
+        (if buf
+            ;; parent buffer exists
+            (if target
+                (progn
+                  (push (make-instance 'target-buffer :target target :parent buf) (crt:children buf))
+                  (setf (crt:children buf) (nreverse (crt:children buf))))
+                ;; add unnamed target buf
+                (progn
+                  (push (make-instance 'target-buffer :parent buf) (crt:children buf))
+                  (setf (crt:children buf) (nreverse (crt:children buf)))))
+            ;; warn that requested parent doesnt exist
+            (echo t "-!- Server buffer doesn't exist:" server-name)))))
 
 (defun remove-buffer ()
-  (crt:remove-item *buffers*))
-
-(defun append-buffer (buffer)
-  (crt:append-item *buffers* buffer))
-
-(defun add-buffer (&optional connection-name target)
-  (crt:append-item *buffers* (make-instance 'girc:buffer :connection (find-connection connection-name) :target target)))
+  (remv *buffer-tree-cursor*)
+  (setf (changedp (node *buffer-tree-cursor*)) t)
+  (update))
 
 (defun select-previous-buffer ()
-  (with-accessors ((buf crt:current-item)) *buffers*
-    (crt:select-previous-item *buffers*)
-    (setf (changedp buf) t) ;; flag current buffer for redisplay
-    (update)))
+  (prev *buffer-tree-cursor*)
+  (setf (changedp (node *buffer-tree-cursor*)) t)
+  (update))
 
 (defun select-next-buffer ()
-  (with-accessors ((buf crt:current-item)) *buffers*
-    (crt:select-next-item *buffers*)
-    (setf (changedp buf) t)
-    (update)))
+  (next *buffer-tree-cursor*)
+  (setf (changedp (node *buffer-tree-cursor*)) t)
+  (update))
 
-(defun select-last-buffer ()
-  (with-accessors ((buf crt:current-item)) *buffers*
-    (crt:select-last-item *buffers*)
-    (setf (changedp buf) t) ;; flag current buffer for redisplay
-    (update)))
+(defun select-buffer (connection-name &optional target)
+  (let ((buf (find-buffer connection-name target)))
+    (when buf
+      (with-accessors ((node node)) *buffer-tree-cursor*
+        (setf (currentp node) nil
+              node buf
+              (currentp node) t)
+        (setf (changedp node) t)
+        (update)))))
 
 (defun push-to-buffer (string buffer)
   "Push a new line to the output buffer, to be displayed by display-buffer.
@@ -93,31 +304,7 @@ If buffer is t, the current buffer is used."
   "Loop through the list of buffers, return the buffer associated with the connection of the message.
 
 First try to return a buffer without a specified target, i.e. the main buffer for the connection."
-  (find-buffer nil (connection msg)))
-
-(defun find-buffer (target connection)
-  "Return the buffer associated with the connection and the target (channel or query).
-
-When there is no connection with that target, return the connection buffer (target nil)."
-  (if target
-      ;; try to find a buffer where both connection and target match
-      (let ((buf1 (loop for buf in (crt:items *buffers*)
-                        when (and (eq connection (connection buf))
-                                  (equal target (target buf)))
-                          return buf)))
-        (if buf1
-            buf1
-            ;; if buf for the target was not found, return the buffer for target nil
-            (loop for buf in (crt:items *buffers*)
-                  when (and (eq connection (connection buf))
-                            (eq (target buf) nil))
-                    return buf)))
-
-      ;; if target is nil,
-      ;; find the first buffer where only the connection matches
-      (loop for buf in (crt:items *buffers*)
-            when (eq connection (connection buf))
-              return buf)))
+  (find-buffer (name (connection msg))))
 
 (defun display (buffer template &rest args)
   "Display the format template and the args in the buffer.
@@ -179,7 +366,8 @@ or the display function can be used which allows format controls."
   (let ((wtp (topic-window *ui*)))
     (when wtp
       (crt:clear wtp)
-      (when (and (target (current-buffer))
+      (when (and (typep (current-buffer) 'target-buffer)
+                 (target (current-buffer))
                  (connection (current-buffer))
                  (connectedp (connection (current-buffer))))
         (let* ((chan (find (target (current-buffer))
@@ -200,44 +388,59 @@ or the display function can be used which allows format controls."
 (defun update-status ()
   "Set the status line of the current buffer."
   (with-accessors ((swin status-window)) *ui*
-    (with-accessors ((nick nickname) (name name)) (connection (current-buffer))
-      (crt:clear swin)
-      (crt:move swin 0 2)
-      (format swin
-              (with-output-to-string (str)
-                ;; the accessors dont work without a connection
-                (if (connection (current-buffer))
-                    (when (and nick name)
-                      (format str "[~A ()] [~A" nick name))
-                    ;; default placeholders
-                    (format str "[~A ()] [~A" :nick :server))
-                ;; if the current target is a channel, add it after the network
-                (if (target (current-buffer))
-                    (format str "/~A ()]" (target (current-buffer)))
-                    (format str "]"))))
-      ;; add the current buffer number at the end of the line
-      (crt:move swin 0 (- (crt:width swin) 6))
-      (format swin "~5@A" (format nil "[~A]" (current-buffer-number))))))
+    (crt:clear swin)
+    (crt:move swin 0 2)
+    (if (or (typep (current-buffer) 'target-buffer)
+            (typep (current-buffer) 'connection-buffer))
+        (with-accessors ((nick nickname) (name name)) (connection (current-buffer))
+          (format swin
+                  (with-output-to-string (str)
+                    ;; the accessors dont work without a connection
+                    (if (connection (current-buffer))
+                        (when (and nick name)
+                          (format str "[~A ()] [~A" nick name))
+                        ;; default placeholders
+                        (format str "[~A ()] [~A" :nick :server))
+                    ;; if the current target is a channel, add it after the network
+                    (if (and (typep (current-buffer) 'target-buffer)
+                             (target (current-buffer)))
+                        (format str "/~A ()]" (target (current-buffer)))
+                        (format str "]")))))
+        (format swin "[main]"))))
+
+;; add the current buffer number at the end of the line
+;;(crt:move swin 0 (- (crt:width swin) 6))
+;;(format swin "~5@A" (format nil "[~A]" (current-buffer-number)))
 
 (defun update-buffers ()
   "If there is a buffer list window, update its contents."
   (with-accessors ((win buffers-window)) *ui*
     (when win
       (crt:clear win)
-      ;;(loop for i from 0 to (1- (length (crt:items *buffers*))) do
-      (dotimes (i (length (crt:items *buffers*)))
-        (crt:move win i 0)
-        ;; if the buffer has a target, write the target,
-        ;; otherwise the connection name, otherwise nil
-        (if (target (nth i (crt:items *buffers*)))
-            (format win " ~A" (target (nth i (crt:items *buffers*))))
-            (if (connection (nth i (crt:items *buffers*)))
-                (format win "~A" (name (connection (nth i (crt:items *buffers*)))))
-                (format win "nil")))
-        ;; highlight the current buffer
-        (when (= i (current-buffer-number))
-          (crt:move win i 0)
-          (crt:change-attributes win 13 '(:reverse)))))))
+      (labels ((show (buf)
+                 (typecase buf
+                   (target-buffer
+                    (let ((text (format nil "  ~A" (target buf))))
+                      (if (> (length text) 12)
+                          (format win (crt:text-ellipsize text 12 :truncate-string (format nil "~C" (code-char #x2026))))
+                          (format win text))))
+                   (connection-buffer
+                    (if (connection buf)
+                        (format win " ~A" (name (connection buf)))
+                        (format win " nil")))
+                   (buffer
+                    (format win "~A" "main")))
+                 ;; highlight the current buffer
+                 (setf (crt:cursor-position-x win) 0)
+                 (when (currentp buf)
+                   (setf (crt:cursor-position-x win) 0)
+                   (crt:change-attributes win 13 '(:reverse)))
+                 (incf (crt:cursor-position-y win))
+                 ;; recursively print any children
+                 (when (crt:children buf)
+                   (dolist (i (crt:children buf))
+                     (show i)))))
+        (show *buffers*)))))
 
 (defun update ()
   (crt:save-excursion (input-window *ui*)

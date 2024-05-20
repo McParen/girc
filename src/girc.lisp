@@ -62,6 +62,10 @@
   (#\etb (lambda ()
            (send t :quit))))
 
+(defun bind (key function)
+  "Bind a key to the default girc keymap."
+  (crt:bind (crt:find-keymap 'girc::girc-input-map) key function))
+
 (defun load-init-file ()
   (let ((init (merge-pathnames (user-homedir-pathname) ".gircrc")))
     (when (probe-file init)
@@ -193,7 +197,6 @@ If str is not a hostname, return nil."
       (if (and opts
                (or (getf opts :help)
                    (getf opts :version)))
-
           ;; handle some command arge before initializing the ui and loading the gircrc.
           ;; if --help or --version print a message and don't start the ui.
           (progn
@@ -201,9 +204,7 @@ If str is not a hostname, return nil."
               (print-help-message))
             (when (getf opts :version)
               (princ "girc v0.0.1")
-              (terpri))
-            (when (getf opts :server-list)
-              (cmd:server "list" nil nil)))
+              (terpri)))
 
           ;; start UI, load init, then handle the remaining command args.
           (progn

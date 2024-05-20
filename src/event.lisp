@@ -193,25 +193,33 @@ For now, the raw irc message will simply be displayed in the output window."
 (define-event join (connection prefix-nick command params text)
   (let* ((channel (cond (text text)
                         (params (nth 0 params)))))
-    ;; your own nick joins the channel
-    (when (string= (nickname (connection (current-buffer)))
-                   prefix-nick)
-      ;; if the channel isnt already the target of the current buffer
-      ;; add a new target buffer
-      (unless (string= channel (target (current-buffer)))
-        (add-buffer (name (connection (current-buffer)))
-                    channel)
-        ;; then display the last added buffer
-        (select-last-buffer))
+    ;; when your own nick joins the channel
+    (when (string-equal prefix-nick (nickname connection))
       ;; add a channel object to the connection
-      (add-channel channel (connection (current-buffer))))
+      (add-channel channel connection)
+      ;; check if the buffer already exists
+      ;; if not, add a new channel buffer
+      (let ((buf (find-buffer (name connection) channel)))
+        (if buf
+            (progn
+              (select-buffer (name connection) channel))
+            (if (and (typep (current-buffer) 'girc:target-buffer)
+                     (null (target (current-buffer))))
+                ;; if the current target buffer has no target, take it
+                (progn
+                  (setf (target (current-buffer)) channel)
+                  (select-buffer (name connection) channel))
+                ;; otherwise make a new one.
+                (progn
+                  (add-target-buffer (name connection) channel)
+                  (select-buffer (name connection) channel))))))
 
     ;; other nicks join the channel
     ;; which means you already are on the channel and channel object exists.
-    (let ((buffer (find-buffer channel connection))
+    (let ((buf (get-buffer (name connection) channel))
           (chan (find-channel channel connection)))
       (add-nick prefix-nick chan)
-      (echo buffer "***" prefix-nick "joined" channel))))
+      (echo buf "***" prefix-nick "joined" channel))))
 
 ;; Syntax: :<prefix> NOTICE <target> :<text>
 ;; Examples:
@@ -230,21 +238,33 @@ For now, the raw irc message will simply be displayed in the output window."
 ;; :alis!alis@services.libera.chat NOTICE haoms :##mirc 57 :mIRC 7.72 client support
 ;; :alis!alis@services.libera.chat NOTICE haoms :End of output.
 
-(define-event notice (connection prefix-nick prefix-host params text)
+;; :NickServ!NickServ@services.libera.chat NOTICE haoms :***** NickServ Help *****
+;; :ChanServ!ChanServ@services.libera.chat NOTICE haoms :***** End of Help *****
+;; :MemoServ!MemoServ@services.libera.chat NOTICE haoms :***** MemoServ Help *****
+
+(define-event notice (rawmsg connection prefix-nick prefix-host params text)
   (destructuring-bind (target) params
-    (let ((source (if prefix-nick
-                      ;; nick!user@host
-                      prefix-nick
-                      ;; kornbluth.freenode.net
-                      prefix-host))
-          (buffer (if (and (string= prefix-nick "ChanServ")
-                           (char= #\[ (char text 0))
-                           (channelp (string-trim "[]" (string-car text))))
-                      ;; chanserv notice when joining a channel
-                      ;; display in the channel buffer, if available
-                      (find-buffer (string-trim "[]" (string-car text)) connection)
-                      ;; normal notice
-                      (find-buffer target connection))))
+    (let* ((source (if prefix-nick
+                       ;; nick!user@host
+                       prefix-nick
+                       ;; kornbluth.freenode.net
+                       prefix-host))
+           (buffer (cond ((and (string-equal prefix-nick "ChanServ")
+                               (char= #\[ (char text 0))
+                               (channelp (string-trim "[]" (string-car text))))
+                          ;; chanserv notice when joining a channel
+                          ;; display in the channel buffer, if available
+                          (get-buffer (name connection)
+                                      (string-trim "[]" (string-car text))))
+                         ;; normal notice
+                         ((string= target "*")
+                          (buffer connection))
+                         ;; a query with nickserv for example.
+                         ((string-equal target (nickname connection))
+                          (get-buffer (name connection) prefix-nick))
+                         ;; notices to channels
+                         (t
+                          (get-buffer (name connection) target)))))
       (if source
           (if (string= target "*")
               ;; Before login, several very general notices are sent without a target.
@@ -263,8 +283,8 @@ For now, the raw irc message will simply be displayed in the output window."
          (chan (find-channel channel connection))
          (reason (if (and params text) text nil))
          ;; if there is a buffer for the channel, send part to that buffer
-         (buffer (find-buffer channel connection)))
-    (unless (string= prefix-nick (nickname connection))
+         (buffer (get-buffer (name connection) channel)))
+    (unless (string-equal prefix-nick (nickname connection))
       (remove-nick prefix-nick chan))
     (if reason
         (display buffer "*** ~A left ~A (~A)" prefix-nick channel reason)
@@ -277,7 +297,7 @@ For now, the raw irc message will simply be displayed in the output window."
 ;; Example: :haom!~myuser@ip-22-111.un55.pool.myip.com NICK :haoms
 (define-event nick (buffer prefix-nick prefix-user connection text)
   ;; if it is your own nick
-  (when (string= prefix-nick (nickname connection))
+  (when (string-equal prefix-nick (nickname connection))
     ;; update the client
     (setf (nickname connection) text)
     ;; display the change to the server buffer
@@ -285,37 +305,40 @@ For now, the raw irc message will simply be displayed in the output window."
     ;; update the status line
     (update))
   ;; display the change to chans where the nick is present
-  (dolist (buffer (crt:items *buffers*))
-    (when (and (eq connection (connection buffer))
-               (target buffer)
-               ;; check if target is a channel
-               (find-channel (target buffer) connection)
-               (member prefix-nick
-                       (nicknames (find-channel (target buffer) connection))
-                       :test #'string=))
-      (remove-nick prefix-nick (find-channel (target buffer) connection))
-      (add-nick text (find-channel (target buffer) connection))
-      (if text
-          (display buffer "*** ~A is now known as ~A" prefix-nick text)
-          (echo buffer "***" prefix-nick "is now known as ...")))))
+  (when (crt:children buffer)
+    (dolist (buf (crt:children buffer))
+      (when (and (target buf)
+                 ;; check if target is a channel
+                 (find-channel (target buf) connection)
+                 (member prefix-nick
+                         (nicknames (find-channel (target buf) connection))
+                         :test #'string=))
+        (remove-nick prefix-nick (find-channel (target buf) connection))
+        (add-nick text (find-channel (target buf) connection))
+        (if text
+            (display buf "*** ~A is now known as ~A" prefix-nick text)
+            (echo buf "***" prefix-nick "is now known as ..."))))))
 
 ;; Event:   QUIT
 ;; Syntax:  :<prefix> QUIT :<reason>
 ;; Comment: Generates an ERROR reply.
 ;; Example: :haom!~myuser@ip-088-152-010-043.um26.pools.vodafone-ip.de QUIT :Client Quit
-(define-event quit (prefix-nick connection text)
-  (dolist (buffer (crt:items *buffers*))
-    (when (and (eq connection (connection buffer))
-               (target buffer)
-               ;; check if target is a channel
-               (find-channel (target buffer) connection)
-               (member prefix-nick
-                       (nicknames (find-channel (target buffer) connection))
-                       :test #'string=))
-      (remove-nick prefix-nick (find-channel (target buffer) connection))
-      (if text
-          (display buffer "*** ~A quit (~A)" prefix-nick text)
-          (echo buffer "***" prefix-nick "quit")))))
+(define-event quit (buffer prefix-nick connection text)
+  (if (crt:children buffer)
+      (dolist (buf (crt:children buffer))
+        (when (and (target buf)
+                   ;; check if target is a channel
+                   (find-channel (target buf) connection)
+                   (member prefix-nick
+                           (nicknames (find-channel (target buf) connection))
+                           :test #'string=))
+          (remove-nick prefix-nick (find-channel (target buf) connection))
+          (if text
+              (display buf "*** ~A quit (~A)" prefix-nick text)
+              (echo buf "***" prefix-nick "quit"))))
+      ;; if there are no channels, and you quit, display a quit message in the server buffer.
+      (when (string-equal (nickname connection) prefix-nick)
+        (echo buffer "*** You quit" (name connection)))))
 
 (define-event ping (buffer rawmsg connection text)
   (when conf:show-server-ping
@@ -332,7 +355,7 @@ For now, the raw irc message will simply be displayed in the output window."
 ;; :haom!~myuser@93-142-151-146.adsl.net.com.de PRIVMSG haom :hello there
 (define-event privmsg (prefix-nick params connection text)
   (destructuring-bind (target) params
-    (let ((buffer (find-buffer target connection)))
+    (let ((buf (get-buffer (name connection) target)))
       (when text
         (if (ctcp-message-p text)
             ;; the PRIVMSG text contains an embedded CTCP command.
@@ -342,20 +365,20 @@ For now, the raw irc message will simply be displayed in the output window."
                   (case (string-to-keyword cmd)
                     (:action
                      ;; action does not require a reply, just a different display.
-                     (display buffer "* ~A ~A" prefix-nick args))
+                     (display buf "* ~A ~A" prefix-nick args))
                     (t
-                     (display buffer "-!- CTCP ~A not yet implemented." cmd)))
+                     (display buf "-!- CTCP ~A not yet implemented." cmd)))
 
                   ;; unsupported commands.
-                  (display buffer "-!- CTCP ~A request from ~A not supported." cmd prefix-nick)))
+                  (display buf "-!- CTCP ~A request from ~A not supported." cmd prefix-nick)))
 
             ;; The PRIVMSG contains just text.
             (if (channelp target)
                 ;; in a channel: <nick> hello there.
-                (display buffer "<~A> ~A" prefix-nick text)
+                (display buf "<~A> ~A" prefix-nick text)
                 ;; in a query:   *nick* hello there.
-                (let ((buffer (find-buffer prefix-nick connection)))
-                  (display buffer "*~A* ~A" prefix-nick text))))))))
+                (let ((buf (get-buffer (name connection) prefix-nick)))
+                  (display buf "*~A* ~A" prefix-nick text))))))))
 
 (defun display-event-text (msg)
   "Basic event handler to simply display the message text."
@@ -501,7 +524,7 @@ For now, the raw irc message will simply be displayed in the output window."
 (define-event error (buffer connection text)
   (display buffer "-!- Error: ~A" text)
   (disconnect connection)
-  (setf (connection (current-buffer)) nil)
+  ;;(setf (connection (current-buffer)) nil)
   (update))
 
 
@@ -545,8 +568,7 @@ RPL_LISTEND (323)
   (with-slots (rpl-list-end-p rpl-list-channels) connection
     (display buffer "--- Channel LIST End: ~A channels found." (length rpl-list-channels))
     ;; by default, sort the channel list by user numbers
-    (setf rpl-list-channels
-          (sort rpl-list-channels #'> :key #'cadr))
+    (setf rpl-list-channels (sort rpl-list-channels #'> :key #'cadr))
     (unless rpl-list-end-p
       (setf rpl-list-end-p t))))
 
@@ -601,7 +623,7 @@ RPL_LISTEND (323)
 ;; Example: :services. 328 haoms #guix :https://guix.gnu.org
 (define-event rpl-channel-url (connection params text)
   (destructuring-bind (client channel) params
-    (let ((buffer (find-buffer channel connection)))
+    (let ((buffer (get-buffer (name connection) channel)))
       (when text
         (display buffer "*** URL for ~A: ~A" channel text)))))
 
@@ -612,7 +634,7 @@ RPL_LISTEND (323)
 ;; Example:  :kornbluth.freenode.net 332 McParen #ubuntu :Official Ubuntu Support Channel
 (define-event rpl-topic (connection params text)
   (destructuring-bind (client channel) params
-    (let ((buffer (find-buffer channel connection)))
+    (let ((buffer (get-buffer (name connection) channel)))
       (when text
         (display buffer "*** Topic for ~A: ~A" channel text)
         (let ((chan (find-channel channel connection)))
@@ -635,11 +657,11 @@ RPL_LISTEND (323)
 (define-event rpl-topicwhotime (buffer rawmsg connection params text)
   (cond ((= (length params) 4)
          (destructuring-bind (client channel nick setat) params
-           (display (find-buffer channel connection)
+           (display (get-buffer (name connection) channel)
                     "*** The topic was set by ~A on ~A." nick setat)))
         ((= (length params) 3)
          (destructuring-bind (client channel nick) params
-           (display (find-buffer channel connection)
+           (display (get-buffer (name connection) channel)
                     "*** The topic was set by ~A on ~A." nick text)))
         (t
          (echo buffer rawmsg))))

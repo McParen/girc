@@ -29,7 +29,10 @@
 
    ;; buffer
    buffer
+   connection-buffer
+   target-buffer
    find-buffer
+   get-buffer
    connection
    target
    *buffers*
@@ -37,10 +40,11 @@
    display
    echo
    remove-buffer
-   select-last-buffer
+   select-buffer
    changedp
    update
-   add-buffer
+   add-server-buffer
+   add-target-buffer
 
    ;; connection
    *connections*
@@ -149,13 +153,17 @@
    *buffers*
    current-buffer
    find-buffer
+   get-buffer
    display
    echo
    remove-buffer
-   select-last-buffer
+   select-buffer
    changedp
    update
-   add-buffer
+   connection-buffer
+   target-buffer
+   add-server-buffer
+   add-target-buffer
    *connections*
    name
    nickname
@@ -221,9 +229,12 @@
 
 ;; these abbrevs are now visible in the de.anvi.girc package, but we also need
 ;; the same abbrevs to be usable from every other package
-(add-package-local-nickname "GIRC" :de.anvi.girc         :de.anvi.girc.command)
+(add-package-local-nickname "CMD"  :de.anvi.girc.command :de.anvi.girc.command)
 (add-package-local-nickname "CONF" :de.anvi.girc.conf    :de.anvi.girc.command)
+(add-package-local-nickname "GIRC" :de.anvi.girc         :de.anvi.girc.command)
 (add-package-local-nickname "IRC"  :de.anvi.girc.irc     :de.anvi.girc.command)
 
-(add-package-local-nickname "GIRC" :de.anvi.girc         :de.anvi.girc.conf)
 (add-package-local-nickname "CMD"  :de.anvi.girc.command :de.anvi.girc.conf)
+(add-package-local-nickname "CONF" :de.anvi.girc.conf    :de.anvi.girc.conf)
+(add-package-local-nickname "GIRC" :de.anvi.girc         :de.anvi.girc.conf)
+(add-package-local-nickname "IRC"  :de.anvi.girc.irc     :de.anvi.girc.conf)

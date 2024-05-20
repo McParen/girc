@@ -5,6 +5,12 @@
 ;; At the moment, it can be used to set global config variables,
 ;; to call predefined client commands or to define new ones.
 
+;; the default init package is :girc
+
+(bind "C-x k" (lambda () (cmd:buffer "kill")))
+
+;; conf and cmd are separate packages
+
 (in-package :conf)
 
 (setq show-server-ping nil

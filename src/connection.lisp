@@ -286,8 +286,8 @@ The allowed max length of the irc message including CRLF is 512 bytes."
     (if connection
         (if (connectedp connection)
             (write-irc-line rawmsg (stream connection))
-            (display t "-!- ~A not connected." (name connection)))
-        (display t "-!- Current buffer not associated with a connection."))))
+            (echo t "-!- Server not connected:" (name connection)))
+        (echo t "-!- Buffer not associated with a connection."))))
 
 (defun send (connection command &optional params text)
   "Assemble an irc message, then send it as a string to the stream.
@@ -345,7 +345,7 @@ If the read length including CRLF exceeds that limit, nil is returned."
 ;; (buffer con) is only used here in handle-server-input
 (defmethod buffer ((con connection))
   "Loop through the list of buffers, return the buffer associated with the connection."
-  (loop for buf in (crt:items *buffers*) do
+  (loop for buf in (crt:children *buffers*) do
     (when (eq con (connection buf))
       (return buf))))
 
