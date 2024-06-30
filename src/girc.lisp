@@ -25,9 +25,30 @@
          (show-topic-line conf:show-topic-line)))
 
   ;; toggle the display of the buffer list
-  (:f4 (lambda ()
-         (setf conf:show-buffer-list (not conf:show-buffer-list))
-         (show-buffer-list conf:show-buffer-list)))
+  (:f4
+   (lambda ()
+     (setf conf:show-buffer-list (not conf:show-buffer-list))
+     (if conf:show-buffer-list
+         (if conf:show-buffer-line
+             (show-buffer-line t)
+             (show-buffer-column t))
+         (progn
+           (show-buffer-line nil)
+           (show-buffer-column nil)))))
+
+  ;; toggle the display of the buffer list as a line (tab bar)
+  ("S-<F4>"
+   (lambda ()
+     (setf conf:show-buffer-line (not conf:show-buffer-line))
+     (when conf:show-buffer-list
+       (if conf:show-buffer-line
+           (progn
+             (show-buffer-line t)
+             (show-buffer-column nil))
+           (progn
+             (show-buffer-line nil)
+             (show-buffer-column t))))))
+
 
   ;; part current channel
   (:f7  'cmd:part)
@@ -46,7 +67,7 @@
              (crt:calculate-layout (layout *ui*))
              (setf (changedp (current-buffer)) t
                    (crt:width (input-field *ui*)) (crt:width (input-window *ui*)))
-             (update)))
+             (redraw)))
 
   ;; command.lisp
   (#\newline 'handle-user-command)
@@ -130,6 +151,8 @@ file can be passed:
    :meta-var    "<method>"
    :arg-parser #'identity
    :description "Method to use to login to the account.")
+
+  ;; long options
   (:name        :ssl
    :long        "ssl"
    :description "Enable SSL encryption for the connection."))
@@ -147,29 +170,34 @@ file can be passed:
 (defun hostname-p (str)
   "If str is a hostname, return the domain to use as server name.
 
-It is a hostname if it contains dots, for example irc.libera.chat.
+A name is considered a hostname if it contains dots, for example
+irc.libera.chat.
 
 If str is not a hostname, return nil."
   (when (position #\. str)
     (let* ((tokens (split-sequence:split-sequence #\. str))
            (count (length tokens))
+           ;; return the second to last token, i.e. the domain.
            (name (nth (- count 2) tokens)))
       name)))
 
-;; args handled after the UI was initialized and the init file loaded.
+;; args handled after the ui was initialized and the init file loaded.
 (defun handle-command-args ()
   ;; check if the exe is girc
   (when (search "girc" (nth 0 sb-ext:*posix-argv*))
     (let (server
           nick)
       (multiple-value-bind (opts free-args) (opts:get-opts)
-        ;; check the free args first, which means the opts --server and --nick
-        ;; override the free args.
+        ;; check the free args (server nick) first
         (when free-args
           (if (= (length free-args) 2)
+              ;; (server nick)
               (setq server (nth 0 free-args)
                     nick (nth 1 free-args))
+              ;; (server)
               (setq server (nth 0 free-args))))
+        ;; if the opts --server and --nick are given explicitely,
+        ;; they override the free args.
         (when (getf opts :server)
           (setq server (getf opts :server)))
         (when (getf opts :nick)
@@ -197,8 +225,8 @@ If str is not a hostname, return nil."
       (if (and opts
                (or (getf opts :help)
                    (getf opts :version)))
-          ;; handle some command arge before initializing the ui and loading the gircrc.
-          ;; if --help or --version print a message and don't start the ui.
+          ;; handle some args before starting the ui and loading the init file.
+          ;; if --help or --version, print a message and don't start the ui.
           (progn
             (when (getf opts :help)
               (print-help-message))
@@ -206,16 +234,19 @@ If str is not a hostname, return nil."
               (princ "girc v0.0.1")
               (terpri)))
 
-          ;; start UI, load init, then handle the remaining command args.
+          ;; start ui, load init, then handle the remaining command args.
           (progn
             (setq *ui* (make-instance 'user-interface))
             (load-init-file)
             (handle-command-args)
             (when conf:show-buffer-list
-              (show-buffer-list t))
-            (update)
+              (if conf:show-buffer-line
+                  (show-buffer-line t)
+                  (show-buffer-column t)))
+            (redraw)
             ;; run the main event loop on the input field
             (crt:edit (input-field *ui*))
+            ;; when we exit the main loop, cleanly finalize the ui.
             (finalize-user-interface *ui*))))))
 
 #+(and sbcl sb-core-compression)

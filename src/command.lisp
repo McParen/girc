@@ -33,7 +33,7 @@ Bound to #\newline in girc-input-map."
     (when input
       (crt:reset field)
       (eval input)))
-  (update))
+  (redraw))
 
 ;;; Implementation of user commands
 
@@ -155,8 +155,7 @@ Bound to #\newline in girc-input-map."
      ;; set the buffer target, or remove it by setting it to nil.
      (if (typep (current-buffer) 'girc:target-buffer)
          (progn
-           (setf (target (current-buffer)) arg0)
-           (update))
+           (setf (target (current-buffer)) arg0))
          (echo t "-!- Not in a channel/query buffer.")))
     ("connection"
      ;; associate a buffer with an existing connection
@@ -164,20 +163,24 @@ Bound to #\newline in girc-input-map."
          (if arg0
              (let ((conn (find-connection arg0)))
                (if conn
-                   (progn
-                     (setf (connection (current-buffer)) conn)
-                     (echo t "*** Buffer connection set to" arg0)
-                     (update))
+                   (if (and (connection (current-buffer))
+                            (connectedp (connection (current-buffer))))
+                       (echo t "-!- Can't set new connection while connected.")
+                       (progn
+                         (setf (connection (current-buffer)) conn)
+                         (echo t "*** Buffer connection set to" arg0)))
                    (progn
                      (echo t "-!- Server" arg0 "not found."))))
              ;; if no connection name was given,
              ;; set the connection to nil (remove the current connection)
              (let ((conn (connection (current-buffer))))
                (if conn
-                   (progn
-                     (setf (connection (current-buffer)) nil)
-                     (echo t "*** Buffer connection removed.")
-                     (update))
+                   (if (and (connection (current-buffer))
+                            (connectedp (connection (current-buffer))))
+                       (echo t "-!- Can't remove connection while connected.")
+                       (progn
+                         (setf (connection (current-buffer)) nil)
+                         (echo t "*** Buffer connection removed.")))
                    (echo t "-!- Buffer not associated with a connection."))))
          (echo t "-!- Not in a server buffer.")))
     (t
@@ -235,30 +238,38 @@ Bound to #\newline in girc-input-map."
          (echo t "-!- Required command: /server <command>")))))
 
 ;; /connect
-;; /connect <name>
-(defun connect (name)
+;; /connect <server name>
+;; /connect <hostname> <nick>
+(defun connect (name &optional nick)
   (if name
-      (let* ((con (find-connection name)))
-        (if con
-            (progn
-              (let ((buf (find-buffer name)))
-                (if buf
-                    (select-buffer name)
-                    (progn
-                      (add-server-buffer name)
-                      (select-buffer name))))
-              (girc:connect con)
-              ;; associate the current server buffer with the new connection
-              (setf (connection (current-buffer)) con)
-              (update))
-            (echo t "-!- Server not found:" name)))
+      (progn
+        (when (girc::hostname-p name)
+          (if nick
+              (server "add" (girc::hostname-p name) name :nickname nick)
+              (server "add" (girc::hostname-p name) name)))
+        (let* ((name (if (girc::hostname-p name)
+                         (girc::hostname-p name)
+                         name))
+               (con (find-connection name)))
+          (if con
+              (progn
+                (let ((buf (find-buffer name)))
+                  (if buf
+                      (select-buffer name)
+                      (progn
+                        (add-server-buffer name)
+                        (select-buffer name))))
+                (girc:connect con)
+                ;; associate the current server buffer with the new connection
+                (setf (connection (current-buffer)) con))
+              (echo t "-!- Server not found:" name))))
+      ;; if a name was not given, try to use the connection associated with the buffer.
       (if (and (typep (current-buffer) 'connection-buffer)
                (connection (current-buffer)))
           (if (connectedp (connection (current-buffer)))
               (echo t "-!- Server already connected: " (name (connection (current-buffer))))
               (progn
-                (girc:connect (connection (current-buffer)))
-                (update)))
+                (girc:connect (connection (current-buffer)))))
           (echo t "-!- Buffer not associated with a connection."))))
 
 ;; /exit
@@ -267,6 +278,7 @@ Bound to #\newline in girc-input-map."
 
 ;; /join #channel
 ;; /join #chan1,#chan2
+
 (defun join (channel)
   "Send a request to join the channel on the current server.
 
@@ -433,7 +445,6 @@ channel and receive an error message, for example 474."
          (progn
            ;; remove the channel from the channel list of the connection
            (remove-channel channel (connection (current-buffer)))
-           (setf (target (current-buffer)) nil)
            (irc:part t channel))
          ;; if no channel was given, but the current buffer has a target
          (if (target (current-buffer))
@@ -446,7 +457,6 @@ channel and receive an error message, for example 474."
          (progn
            ;; remove the channel from the channel list of the connection
            (remove-channel channel (connection (current-buffer)))
-           (setf (target (current-buffer)) nil)
            (irc:part t channel))
          (echo t "-!- Required argument: /part <channel>")))
     (girc:buffer
@@ -495,15 +505,19 @@ channel and receive an error message, for example 474."
 (defun show (name)
   "Show the ui element given by its name."
   (alexandria:switch (name :test #'string=)
-    ("buffers"
-     (show-buffer-list t))
+    ("buffer-line"
+     (show-buffer-line t))
+    ("buffer-column"
+     (show-buffer-column t))
     ("topic"
      (show-topic-line t))))
 
 (defun hide (name)
   "Hide the ui element given by its name."
   (alexandria:switch (name :test #'string=)
-    ("buffers"
-     (show-buffer-list nil))
+    ("buffer-line"
+     (show-buffer-line nil))
+    ("buffer-column"
+     (show-buffer-column nil))
     ("topic"
      (show-topic-line nil))))

@@ -21,6 +21,7 @@
    ;; girc
    display-logo
    display-info
+   bind
 
    ;; parse
    join-args
@@ -42,7 +43,7 @@
    remove-buffer
    select-buffer
    changedp
-   update
+   redraw
    add-server-buffer
    add-target-buffer
 
@@ -83,7 +84,8 @@
    layout
    output-window
    input-field
-   show-buffer-list
+   show-buffer-column
+   show-buffer-line
    show-topic-line))
 
 (cl:defpackage :de.anvi.girc.irc
@@ -128,6 +130,7 @@
    username
    realname
    show-server-ping
+   show-buffer-line
    show-buffer-list
    show-topic-line))
 
@@ -159,7 +162,7 @@
    remove-buffer
    select-buffer
    changedp
-   update
+   redraw
    connection-buffer
    target-buffer
    add-server-buffer
@@ -188,7 +191,8 @@
    layout
    output-window
    input-field
-   show-buffer-list
+   show-buffer-line
+   show-buffer-column
    show-topic-line)
 
   ;; shadow command names that collide with standard cl functions

@@ -5,7 +5,7 @@
     :initform      nil
     :accessor      changedp
     :type          boolean
-    :documentation "Flag to denote that the buffer was changed and should be redisplayed by update-output.")
+    :documentation "Flag to denote that the buffer was changed and should be redisplayed by draw-output.")
 
    ;; needed for the cursor
    (currentp
@@ -263,17 +263,17 @@ the message can be displayed."
 (defun remove-buffer ()
   (remv *buffer-tree-cursor*)
   (setf (changedp (node *buffer-tree-cursor*)) t)
-  (update))
+  (redraw))
 
 (defun select-previous-buffer ()
   (prev *buffer-tree-cursor*)
   (setf (changedp (node *buffer-tree-cursor*)) t)
-  (update))
+  (redraw))
 
 (defun select-next-buffer ()
   (next *buffer-tree-cursor*)
   (setf (changedp (node *buffer-tree-cursor*)) t)
-  (update))
+  (redraw))
 
 (defun select-buffer (connection-name &optional target)
   (let ((buf (find-buffer connection-name target)))
@@ -283,7 +283,7 @@ the message can be displayed."
               node buf
               (currentp node) t)
         (setf (changedp node) t)
-        (update)))))
+        (redraw)))))
 
 (defun push-to-buffer (string buffer)
   "Push a new line to the output buffer, to be displayed by display-buffer.
@@ -361,7 +361,7 @@ or the display function can be used which allows format controls."
     ;; after the changes have been displayed, set the flag to nil
     (setf changedp nil)))
 
-(defun update-topic ()
+(defun draw-topic ()
   "Display the current buffer channel topic, if available."
   (let ((wtp (topic-window *ui*)))
     (when wtp
@@ -379,13 +379,13 @@ or the display function can be used which allows format controls."
                 (crt:add-string wtp (subseq text 0 (crt:width wtp)))
                 (crt:add-string wtp text))))))))
 
-(defun update-output ()
-  "If the current buffer has been changed, update the output window."
+(defun draw-output ()
+  "If the current buffer has been changed, redraw the output window."
   (when (changedp (current-buffer))
     (display-buffer (current-buffer))))
 
 ;; called from: connect (command), error (event)
-(defun update-status ()
+(defun draw-status ()
   "Set the status line of the current buffer."
   (with-accessors ((swin status-window)) *ui*
     (crt:clear swin)
@@ -412,7 +412,7 @@ or the display function can be used which allows format controls."
 ;;(crt:move swin 0 (- (crt:width swin) 6))
 ;;(format swin "~5@A" (format nil "[~A]" (current-buffer-number)))
 
-(defun update-buffers ()
+(defun draw-buffer-column ()
   "If there is a buffer list window, update its contents."
   (with-accessors ((win buffers-window)) *ui*
     (when win
@@ -442,12 +442,38 @@ or the display function can be used which allows format controls."
                      (show i)))))
         (show *buffers*)))))
 
-(defun update ()
+(defun draw-buffer-line ()
+  "If there is a buffer line window, update its contents."
+  (with-accessors ((win buffer-line-window)) *ui*
+    (when win
+      (crt:clear win)
+      (labels ((show (buf)
+                 (let ((str (typecase buf
+                              (target-buffer
+                               (let ((text (format nil "~A" (target buf))))
+                                 (if (> (length text) 10)
+                                     (format nil (crt:text-ellipsize text 10 :truncate-string (format nil "~C" (code-char #x2026))))
+                                     (format nil text))))
+                              (connection-buffer
+                               (if (connection buf)
+                                   (format nil "~A" (name (connection buf)))
+                                   (format nil "~A" nil)))
+                              (buffer
+                               (format nil "~A" "main")))))
+                   (crt::add-string win (format nil " ~10A " str) :attributes (if (currentp buf) '(:reverse) '()))
+                   ;; recursively print children
+                   (when (crt:children buf)
+                     (dolist (i (crt:children buf))
+                       (show i))))))
+        (show *buffers*)))))
+
+(defun redraw ()
   (crt:save-excursion (input-window *ui*)
-    (update-topic)
-    (update-output)
-    (update-status)
-    (update-buffers))
+    (draw-topic)
+    (draw-output)
+    (draw-status)
+    (draw-buffer-column)
+    (draw-buffer-line))
   (refresh *ui*))
 
 ;; unused

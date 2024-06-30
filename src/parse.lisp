@@ -385,7 +385,7 @@ for each."
         ;; tokenize the first n required (and optional) args
         ;; reqs = list of parsed required (and optional) arguments
         ;; pos = end of nth required arg, start of rest or key
-        (split-sequence:split-sequence #\space str :count nreq)
+        (split-sequence:split-sequence #\space str :count nreq :remove-empty-subseqs t)
       ;; if there are no args, split-sequence returns an empty string, but we want nil
       (let* ((reqs (if (and (= (length reqs) 1)        ; a list with one empty string ("")
                             (= (length (car reqs)) 0)) ; empty string = length 0

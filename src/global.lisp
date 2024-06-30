@@ -19,7 +19,10 @@
   "Set to t to show the server PING event and the PONG response.")
 
 (defparameter show-buffer-list nil
-  "Set to t to show the list of buffers in a side window.")
+  "Set to t to display the list of buffers.")
+
+(defparameter show-buffer-line nil
+  "Set to t to show the list of buffers in a line (tabs) or nil (default) for a column.")
 
 (defparameter show-topic-line t
   "Set to t to show the topic line at the top of the screen.")

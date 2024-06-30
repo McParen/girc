@@ -35,7 +35,9 @@
                                      :enable-colors nil
                                      :enable-function-keys t))
     (setf layout (make-instance 'crt:column-layout :parent main-screen :children
-                                (list (list 'crt:window :name :topic :height 1)
+                                (list ;; buffer tab bar is added dynamically
+                                      ;; (list 'crt:window :name :buffer-line :height 1)
+                                      (list 'crt:window :name :topic :height 1)
                                       (make-instance 'crt:row-layout :name :lay1 :children
                                                      (list (list 'crt:window :name :output)
                                                            ;; the buffers win is added dynamically
@@ -54,7 +56,7 @@
                                      :window (find :input (crt:leaves layout) :key #'crt:name)
                                      :style (list :foreground nil :background nil)
                                      :keymap 'girc-input-map
-                                     ;; poll the server and update the display 10 times per second.
+                                     ;; poll the server and redraw the display 10 times per second.
                                      :frame-rate 10))
     ;; reverse the display of the topic and the status line
     (setf (crt:background (find :topic (crt:leaves layout) :key #'crt:name))
@@ -79,6 +81,9 @@
 (defun buffers-window (ui)
   (find :buffers (crt:leaves (layout ui)) :key #'crt:name))
 
+(defun buffer-line-window (ui)
+  (find :buffer-line (crt:leaves (layout ui)) :key #'crt:name))
+
 (defmethod refresh ((ui user-interface) &rest args)
   (with-slots (layout) ui
     (mapc #'crt:touch (crt:leaves layout))
@@ -92,7 +97,7 @@
     (crt:end-screen)))
 
 ;; used in key bindings and commands
-(defun show-buffer-list (&optional (flag t))
+(defun show-buffer-column (&optional (flag t))
   "If t, show the buffers window, if nil, hide it."
   (let ((wbuf (crt:find-node :buffers (slot-value *ui* 'layout))))
     (if flag
@@ -111,7 +116,27 @@
   ;; redraw the buffer and resize the input field
   (setf (changedp (current-buffer)) t
         (crt:width (input-field *ui*)) (crt:width (input-window *ui*)))
-  (update))
+  (redraw))
+
+;; add a single-line window for a horizontal buffer list like a tab bar.
+(defun show-buffer-line (&optional (flag t))
+  (let ((wbufl (crt:find-node :buffer-line (slot-value *ui* 'layout))))
+    (if flag
+        (unless wbufl
+          (setf (crt:children (slot-value *ui* 'layout))
+                (cons (list 'crt:window :name :buffer-line :height 1)
+                      (crt:children (slot-value *ui* 'layout))))
+          (crt:calculate-layout (slot-value *ui* 'layout))
+          (crt:initialize-leaves (slot-value *ui* 'layout))
+          (setf (crt:background (crt:find-node :buffer-line (slot-value *ui* 'layout)))
+                (make-instance 'crt:complex-char :simple-char #\space)))
+        (when wbufl
+          (close wbufl)
+          (setf (crt:children (slot-value *ui* 'layout))
+                (remove wbufl (crt:children (slot-value *ui* 'layout))))
+          (crt:calculate-layout (slot-value *ui* 'layout)))))
+  (setf (changedp (current-buffer)) t)
+  (redraw))
 
 (defun show-topic-line (&optional (flag t))
   "If t, show the buffers window, if nil, hide it."
@@ -120,8 +145,9 @@
         ;; only add if it doesnt exist
         (unless wtop
           (setf (crt:children (slot-value *ui* 'layout))
-                (cons (list 'crt:window :name :topic :height 1)
-                      (crt:children (slot-value *ui* 'layout))))
+                (crt:insert-nth (if (crt:find-node :buffer-line (slot-value *ui* 'layout)) 1 0)
+                                (list 'crt:window :name :topic :height 1)
+                                (crt:children (slot-value *ui* 'layout))))
           (crt:calculate-layout (slot-value *ui* 'layout))
           (crt:initialize-leaves (slot-value *ui* 'layout))
 
@@ -135,4 +161,4 @@
                 (remove wtop (crt:children (slot-value *ui* 'layout))))
           (crt:calculate-layout (slot-value *ui* 'layout)))))
   (setf (changedp (current-buffer)) t)
-  (update))
+  (redraw))

@@ -349,6 +349,7 @@ If the read length including CRLF exceeds that limit, nil is returned."
     (when (eq con (connection buf))
       (return buf))))
 
+;; this is called 10 times per second.
 (defun handle-server-input ()
   "Handle the nil event during a non-blocking edit of the input field.
 
@@ -371,8 +372,10 @@ Bound to nil in girc-input-map."
                     (crt:save-excursion (input-window *ui*)
                       ;; message handline writes to the screen, so it has to happen in the main thread
                       (handle-message rawmsg con))) ; see event.lisp
-                (echo (buffer con) "-!- Not a valid IRC message (missing CRLF ending)"))))))
-    (update)))
+                (progn
+                  (echo (buffer con) "-!- Not a valid IRC message (missing CRLF ending)")))
+            ;; update the output after every message so event handlers dont have to do it manually.
+            (redraw)))))))
 
 (defun add-connection (name host &rest args &key &allow-other-keys)
   "Make and add a server object to the connection list.

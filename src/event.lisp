@@ -284,11 +284,17 @@ For now, the raw irc message will simply be displayed in the output window."
          (reason (if (and params text) text nil))
          ;; if there is a buffer for the channel, send part to that buffer
          (buffer (get-buffer (name connection) channel)))
+    ;; if this is not your own nick, remove it from the channel list.
     (unless (string-equal prefix-nick (nickname connection))
       (remove-nick prefix-nick chan))
     (if reason
         (display buffer "*** ~A left ~A (~A)" prefix-nick channel reason)
-        (echo buffer "***" prefix-nick "left" channel))))
+        (echo buffer "***" prefix-nick "left" channel))
+    ;; if this is your own nick and the parted channel is the current target, set target to nil
+    (when (and (string-equal prefix-nick (nickname connection))
+               (typep buffer 'girc:target-buffer)
+               (string-equal channel (target buffer)))
+      (setf (target buffer) nil))))
 
 ;; Event:   NICK
 ;; Syntax:  :<prefix> NICK <old-nick> :<new-nick>
@@ -298,12 +304,12 @@ For now, the raw irc message will simply be displayed in the output window."
 (define-event nick (buffer prefix-nick prefix-user connection text)
   ;; if it is your own nick
   (when (string-equal prefix-nick (nickname connection))
-    ;; update the client
+    ;; update the client nickname
     (setf (nickname connection) text)
     ;; display the change to the server buffer
     (display buffer "*** You are now known as ~A" text)
     ;; update the status line
-    (update))
+    (redraw))
   ;; display the change to chans where the nick is present
   (when (crt:children buffer)
     (dolist (buf (crt:children buffer))
@@ -481,6 +487,7 @@ For now, the raw irc message will simply be displayed in the output window."
 ;; Number:  250
 ;; Event:   RPL_STATSCONN
 ;; Example: :tantalum.libera.chat 250 haom :Highest connection count: 4414 (4413 clients) (289303 connections received)
+;;(bind-event rpl-statsconn 'display-event-text)
 (define-event rpl-statsconn (buffer text connection)
   (echo buffer text)
   (with-slots (autojoin) connection
@@ -525,7 +532,7 @@ For now, the raw irc message will simply be displayed in the output window."
   (display buffer "-!- Error: ~A" text)
   (disconnect connection)
   ;;(setf (connection (current-buffer)) nil)
-  (update))
+  (redraw))
 
 
 ;;; LIST
@@ -640,7 +647,7 @@ RPL_LISTEND (323)
         (let ((chan (find-channel channel connection)))
           (when chan
             (setf (slot-value chan 'topic) text)
-            (update)))))))
+            (redraw)))))))
 
 ;; Number:   333
 ;; Event:    RPL_TOPICWHOTIME
