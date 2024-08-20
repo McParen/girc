@@ -15,6 +15,7 @@
    (:file "utils")
    (:file "parse")
    (:file "ui")
+   (:file "grid")
    (:file "buffer")
    (:file "connection")
    (:file "protocol")

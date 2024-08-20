@@ -88,8 +88,27 @@ query buffers.")
 
 (defparameter *buffer-tree-cursor* (make-cursor *buffers*))
 
+;; the grid is not part of any single buffer, but part of the ui.
+;; we need a different grid for the column buffer view, because it has a
+;; different length (height of the window).
+(defparameter *buffer-line-grid* (make-instance 'grid-1d :cyclic t))
+
+(defparameter *buffer-column-grid* (make-instance 'grid-1d :cyclic t))
+
 (defun current-buffer ()
   (node *buffer-tree-cursor*))
+
+(defun current-buffer-number ()
+  "Walk the tree dept-first pre-order, return the current buffer number."
+  (let ((n 0))
+    (labels ((count- (buf)
+               (when (currentp buf)
+                 (return-from current-buffer-number n))
+               (when (crt:children buf)
+                 (dolist (i (crt:children buf))
+                   (incf n)
+                   (count- i)))))
+      (count- *buffers*))))
 
 #|
  dfs pre-order traversal:
@@ -230,6 +249,7 @@ the message can be displayed."
                 (echo t "-!- Buffer already exists:" server-name)
                 ;; Add new server buffer
                 (progn
+                  (setf (crt:children *buffers*) (nreverse (crt:children *buffers*)))
                   (push (make-instance 'connection-buffer
                                        :connection con
                                        :parent *buffers*)
@@ -251,10 +271,12 @@ the message can be displayed."
             ;; parent buffer exists
             (if target
                 (progn
+                  (setf (crt:children buf) (nreverse (crt:children buf)))
                   (push (make-instance 'target-buffer :target target :parent buf) (crt:children buf))
                   (setf (crt:children buf) (nreverse (crt:children buf))))
                 ;; add unnamed target buf
                 (progn
+                  (setf (crt:children buf) (nreverse (crt:children buf)))
                   (push (make-instance 'target-buffer :parent buf) (crt:children buf))
                   (setf (crt:children buf) (nreverse (crt:children buf)))))
             ;; warn that requested parent doesnt exist
@@ -263,27 +285,65 @@ the message can be displayed."
 (defun remove-buffer ()
   (remv *buffer-tree-cursor*)
   (setf (changedp (node *buffer-tree-cursor*)) t)
+  ;; the buffer has to be removed BEFORE the grid is adjusted.
+  (grid-remove-nth (current-buffer-number) *buffer-line-grid*)
+  (grid-remove-nth (current-buffer-number) *buffer-column-grid*)
   (redraw))
+
+(defun debug-buffer-grid (grid function-name)
+  (echo t
+        (format nil "~A: ~A, ~A, ~A, ~A, ~A"
+                function-name
+                (slot-value grid 'grid-pointer)
+                (slot-value grid 'grid-length)
+                (slot-value grid 'scrolling-enabled-p)
+                (slot-value grid 'region-start)
+                (slot-value grid 'region-length))))
 
 (defun select-previous-buffer ()
   (prev *buffer-tree-cursor*)
+  (move-previous *buffer-line-grid*)
+  (move-previous *buffer-column-grid*)
   (setf (changedp (node *buffer-tree-cursor*)) t)
   (redraw))
 
 (defun select-next-buffer ()
   (next *buffer-tree-cursor*)
+  (move-next *buffer-line-grid*)
+  (move-next *buffer-column-grid*)
   (setf (changedp (node *buffer-tree-cursor*)) t)
   (redraw))
 
-(defun select-buffer (connection-name &optional target)
-  (let ((buf (find-buffer connection-name target)))
+(defun selct (server-name &optional target)
+  (let ((buf (find-buffer server-name target)))
     (when buf
       (with-accessors ((node node)) *buffer-tree-cursor*
         (setf (currentp node) nil
               node buf
               (currentp node) t)
-        (setf (changedp node) t)
-        (redraw)))))
+        (setf (changedp node) t)))))
+
+(defun select-buffer (server-name &optional target)
+  (when (selct server-name target)
+    (grid-move-nth (current-buffer-number) *buffer-line-grid*)
+    (grid-move-nth (current-buffer-number) *buffer-column-grid*)
+    (redraw)))
+
+(defun add-select-server-buffer (&optional server-name)
+  "Add a server buffer and select it (make it current)."
+  (add-server-buffer server-name)
+  ;; select properly sets the current number, so it has to be called before updating the grid.
+  (selct server-name)
+  (grid-insert-nth (current-buffer-number) *buffer-line-grid*)
+  (grid-insert-nth (current-buffer-number) *buffer-column-grid*))
+
+(defun add-select-target-buffer (server-name &optional target)
+  "Add a target buffer to a parent server buffer and select it."
+  (add-target-buffer server-name target)
+  ;; select properly sets the current number, so it has to be called before updating the grid.
+  (selct server-name target)
+  (grid-insert-nth (current-buffer-number) *buffer-line-grid*)
+  (grid-insert-nth (current-buffer-number) *buffer-column-grid*))
 
 (defun push-to-buffer (string buffer)
   "Push a new line to the output buffer, to be displayed by display-buffer.
@@ -406,74 +466,156 @@ or the display function can be used which allows format controls."
                              (target (current-buffer)))
                         (format str "/~A ()]" (target (current-buffer)))
                         (format str "]")))))
-        (format swin "[main]"))))
+        (format swin "[main]"))
+
+    ;; print the DFS pre-order number of the current buffer on the RHS of the status
+    (crt:move swin 0 (- (crt:width swin) 4))
+    (format swin "[~A]" (current-buffer-number))))
 
 ;; add the current buffer number at the end of the line
 ;;(crt:move swin 0 (- (crt:width swin) 6))
 ;;(format swin "~5@A" (format nil "[~A]" (current-buffer-number)))
 
+(defun adjust-region (grid new-region-length)
+  "Take a grid object and adjust its scrolling region after a resize.
+
+The function sets the flag whether scrolling is enabled or not and the
+start position of the scrolling region.
+
+What can be resized is the grid-length by adding or removing items or
+the region length by resizing the terminal."
+  (with-slots (scrolling-enabled-p
+               (p grid-pointer)
+               (l grid-length)
+               (rs region-start)
+               (rl region-length)) grid
+    (setf rl new-region-length)
+    ;; if rl changes, check if we still need to scroll.
+    (if (> l rl)
+        ;; enable scrolling mode
+        (progn
+          (if (and scrolling-enabled-p
+                   rs)
+              ;; scrolling already enabled
+              (progn
+                ;; if rs becomes greatr than p, move it back to p.
+                (when (< p rs)
+                  (setf rs p))
+                ;; if scrolling, adjust rs to the left when p out of the view to the right
+                (when (>= p (+ rs rl))
+                  (setf rs (1+ (- p rl))))
+                ;; if scrolling, dont display less than rl items
+                (when (< (- l rs) rl)
+                  (setf rs (- l rl))))
+              ;; entering scrolling mode the first time
+              (progn
+                (setf scrolling-enabled-p t
+                      rs 0)
+                ;; adjust when point leaves region to the right
+                (when (> p (- l rl))
+                  (setf rs (- l rl))))))
+        ;; turn off scrolling
+        (progn
+          (when scrolling-enabled-p
+            (setf scrolling-enabled-p nil))))))
+
 (defun draw-buffer-column ()
   "If there is a buffer list window, update its contents."
   (with-accessors ((win buffers-window)) *ui*
-    (when win
-      (crt:clear win)
-      (labels ((show (buf)
-                 (typecase buf
-                   (target-buffer
-                    (let ((text (format nil "  ~A" (target buf))))
-                      (if (> (length text) 12)
-                          (format win (crt:text-ellipsize text 12 :truncate-string (format nil "~C" (code-char #x2026))))
-                          (format win text))))
-                   (connection-buffer
-                    (if (connection buf)
-                        (format win " ~A" (name (connection buf)))
-                        (format win " nil")))
-                   (buffer
-                    (format win "~A" "main")))
-                 ;; highlight the current buffer
-                 (setf (crt:cursor-position-x win) 0)
-                 (when (currentp buf)
-                   (setf (crt:cursor-position-x win) 0)
-                   (crt:change-attributes win 13 '(:reverse)))
-                 (incf (crt:cursor-position-y win))
-                 ;; recursively print any children
-                 (when (crt:children buf)
-                   (dolist (i (crt:children buf))
-                     (show i)))))
-        (show *buffers*)))))
+    (with-slots (scrolling-enabled-p
+                 (p grid-pointer)
+                 (l grid-length)
+                 (rs region-start)
+                 (rl region-length)) *buffer-column-grid*
+      ;; this has to be called for both line and column whether win exists or not.
+      ;; this not only updates the region, but also initializes it by setting rl
+      (adjust-region *buffer-column-grid*
+                     ;; new visible number of rows in the buffers window.
+                     (- (crt:height (main-screen *ui*))
+                        2 ; status and input line
+                        (if (crt:find-node :topic (slot-value *ui* 'layout))
+                            1
+                            0)))
+      (when win
+        (crt:clear win)
+        (let ((j 0))
+          (labels ((show (buf)
+                     ;; format the buffer title
+                     (let ((str (typecase buf
+                                  (target-buffer
+                                   (let ((text (format nil "  ~A" (target buf))))
+                                     (if (> (length text) 12)
+                                         (format nil (crt:text-ellipsize text 12 :truncate-string (format nil "~C" (code-char #x2026))))
+                                         (format nil text))))
+                                  (connection-buffer
+                                   (if (connection buf)
+                                       (format nil " ~A" (name (connection buf)))
+                                       (format nil " nil")))
+                                  (buffer
+                                   (format nil "~A" "main")))))
+                       ;; highlight the current buffer
+                       (if scrolling-enabled-p
+                           (when (and (>= j rs)
+                                      (< j (+ rs rl)))
+                             (crt:add-string win (format nil "~13A" str) :attributes (if (currentp buf) '(:reverse) '())))
+                           (progn
+                             (crt:add-string win (format nil "~13A" str) :attributes (if (currentp buf) '(:reverse) '())))))
+                     ;; recursively print any children
+                     (when (crt:children buf)
+                       (dolist (i (crt:children buf))
+                         (incf j)
+                         (show i)))))
+            (show *buffers*)))))))
 
 (defun draw-buffer-line ()
-  "If there is a buffer line window, update its contents."
   (with-accessors ((win buffer-line-window)) *ui*
-    (when win
-      (crt:clear win)
-      (labels ((show (buf)
-                 (let ((str (typecase buf
-                              (target-buffer
-                               (let ((text (format nil "~A" (target buf))))
-                                 (if (> (length text) 10)
-                                     (format nil (crt:text-ellipsize text 10 :truncate-string (format nil "~C" (code-char #x2026))))
-                                     (format nil text))))
-                              (connection-buffer
-                               (if (connection buf)
-                                   (format nil "~A" (name (connection buf)))
-                                   (format nil "~A" nil)))
-                              (buffer
-                               (format nil "~A" "main")))))
-                   (crt::add-string win (format nil " ~10A " str) :attributes (if (currentp buf) '(:reverse) '()))
-                   ;; recursively print children
-                   (when (crt:children buf)
-                     (dolist (i (crt:children buf))
-                       (show i))))))
-        (show *buffers*)))))
+    (with-slots (scrolling-enabled-p
+                 (p grid-pointer)
+                 (l grid-length)
+                 (rs region-start)
+                 (rl region-length)) *buffer-line-grid*
+      ;; this has to be called for both line and column whether win exists or not.
+      ;; this not only updates the region, but also initializes it by setting rl
+      (adjust-region *buffer-line-grid*
+                     (floor (/ (crt:width (main-screen *ui*)) 12)))
+      (when win
+        (crt:clear win)
+        (let ((j 0))
+          (labels ((show (buf)
+                     ;; format the buffer title
+                     (let ((str (typecase buf
+                                  (target-buffer
+                                   (let ((text (format nil "~A" (target buf))))
+                                     (if (> (length text) 10)
+                                         (format nil (crt:text-ellipsize text 10 :truncate-string (format nil "~C" (code-char #x2026))))
+                                         (format nil text))))
+                                  (connection-buffer
+                                   (if (connection buf)
+                                       (format nil "~A" (name (connection buf)))
+                                       (format nil "~A" nil)))
+                                  (buffer
+                                   (format nil "~A" "main")))))
+                       ;; highlight the current buffer
+                       (if scrolling-enabled-p
+                           (when (and (>= j rs)
+                                      (< j (+ rs rl)))
+                             (crt:add-string win (format nil " ~10A " str) :attributes (if (currentp buf) '(:reverse) '())))
+                           (crt:add-string win (format nil " ~10A " str) :attributes (if (currentp buf) '(:reverse) '()))))
+                     ;; recursively print any children
+                     (when (crt:children buf)
+                       (dolist (i (crt:children buf))
+                         (incf j)
+                         (show i)))))
+            (show *buffers*)))))))
 
 (defun redraw ()
   (crt:save-excursion (input-window *ui*)
     (draw-topic)
-    (draw-output)
     (draw-status)
     (draw-buffer-column)
-    (draw-buffer-line))
+    (draw-buffer-line)
+    ;; redraw output last so current variables can be displayed.
+    (draw-output))
   (refresh *ui*))
 
 ;; unused
@@ -491,3 +633,17 @@ or the display function can be used which allows format controls."
     (if (< len n)
         list
         (subseq list 0 n))))
+
+(defun nodes (root)
+  "Walk the tree dept-first pre-order, return a list of all buffers (nodes)."
+  (let (stack
+        nodes)
+    (push root stack)
+    (loop
+      (if stack
+          (let ((node (pop stack)))
+            (push node nodes)
+            (when (crt:children node)
+              (dolist (c (reverse (crt:children node)))
+                (push c stack))))
+          (return (reverse nodes))))))

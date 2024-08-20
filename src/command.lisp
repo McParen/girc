@@ -32,8 +32,12 @@ Bound to #\newline in girc-input-map."
   (let ((input (crt:value field)))
     (when input
       (crt:reset field)
-      (eval input)))
-  (redraw))
+      (eval input)
+      ;; redraw the screen if a command has been called from the input line.
+      ;; if a command has been directly called from a binding, it has to call redraw explicitely.
+      ;; event functions call redraw from connection/handle-server-input.
+      (redraw))))
+
 
 ;;; Implementation of user commands
 
@@ -99,7 +103,9 @@ Bound to #\newline in girc-input-map."
        (connection-buffer
         (if (connectedp (connection (current-buffer)))
             (echo t "-!- Can't kill a connected server buffer.")
-            (remove-buffer)))
+            (if (crt:children (current-buffer))
+                (echo t "-!- Can't kill a server buffer with child buffers.")
+                (remove-buffer))))
        (target-buffer
         (remove-buffer))
        (girc:buffer
@@ -110,11 +116,11 @@ Bound to #\newline in girc-input-map."
        (labels ((show (buf)
                   (typecase buf
                     (target-buffer
-                     (echo t n (name (connection buf)) (target buf)))
+                     (echo t n (name (connection buf)) (target buf) (girc::currentp buf)))
                     (connection-buffer
-                     (echo t n (name (connection buf))))
+                     (echo t n (name (connection buf)) (girc::currentp buf)))
                     (girc:buffer
-                     (echo t n "main")))
+                     (echo t n "main" (girc::currentp buf))))
                   (incf n)
                   (when (crt:children buf)
                     (dolist (i (crt:children buf))
@@ -129,16 +135,12 @@ Bound to #\newline in girc-input-map."
              ;; server and target given
              (if (find-buffer arg0 arg1)
                  (echo t "-!- Buffer already exists:" arg0 arg1)
-                 (progn
-                   (add-target-buffer arg0 arg1)
-                   (select-buffer arg0 arg1)))
-             ;; target not given
+                 (add-select-target-buffer arg0 arg1))
+             ;; target not given, arg0=server
              (progn
                (if (find-buffer arg0)
                    (echo t "-!- Buffer already exists:" arg0)
-                   (progn
-                     (add-server-buffer arg0)
-                     (select-buffer arg0)))))
+                   (add-select-server-buffer arg0))))
          ;; server not given
          (echo t "-!- Server not given.")))
     ("names"
@@ -256,9 +258,7 @@ Bound to #\newline in girc-input-map."
                 (let ((buf (find-buffer name)))
                   (if buf
                       (select-buffer name)
-                      (progn
-                        (add-server-buffer name)
-                        (select-buffer name))))
+                      (add-select-server-buffer name)))
                 (girc:connect con)
                 ;; associate the current server buffer with the new connection
                 (setf (connection (current-buffer)) con))
@@ -278,6 +278,8 @@ Bound to #\newline in girc-input-map."
 
 ;; /join #channel
 ;; /join #chan1,#chan2
+
+;;; TODO 231001 /join #c1,#c2 #k1,#k2
 
 (defun join (channel)
   "Send a request to join the channel on the current server.
@@ -347,12 +349,10 @@ channel and receive an error message, for example 474."
                         (if (null (target (current-buffer)))
                             (setf (target (current-buffer)) nick)
                             (progn
-                              (add-target-buffer (name (connection (current-buffer))) nick)
-                              (select-buffer (name (connection (current-buffer))) nick)))
+                              (add-select-target-buffer (name (connection (current-buffer))) nick)))
                         (echo t "*** Starting a query with" nick))
                        (girc:connection-buffer
-                        (add-target-buffer (name (connection (current-buffer))) nick)
-                        (select-buffer (name (connection (current-buffer))) nick)
+                        (add-select-target-buffer (name (connection (current-buffer))) nick)
                         (echo t "*** Starting a query with" nick)))))
              (if (typep (current-buffer) 'girc:target-buffer)
                  (if (and (target (current-buffer))

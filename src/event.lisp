@@ -205,14 +205,12 @@ For now, the raw irc message will simply be displayed in the output window."
               (select-buffer (name connection) channel))
             (if (and (typep (current-buffer) 'girc:target-buffer)
                      (null (target (current-buffer))))
-                ;; if the current target buffer has no target, take it
+                ;; if the current target buffer has no target, take it over.
                 (progn
                   (setf (target (current-buffer)) channel)
                   (select-buffer (name connection) channel))
                 ;; otherwise make a new one.
-                (progn
-                  (add-target-buffer (name connection) channel)
-                  (select-buffer (name connection) channel))))))
+                (add-select-target-buffer (name connection) channel)))))
 
     ;; other nicks join the channel
     ;; which means you already are on the channel and channel object exists.
@@ -307,9 +305,9 @@ For now, the raw irc message will simply be displayed in the output window."
     ;; update the client nickname
     (setf (nickname connection) text)
     ;; display the change to the server buffer
-    (display buffer "*** You are now known as ~A" text)
-    ;; update the status line
-    (redraw))
+    (display buffer "*** You are now known as ~A" text))
+    ;; redraw updates the status line
+
   ;; display the change to chans where the nick is present
   (when (crt:children buffer)
     (dolist (buf (crt:children buffer))
@@ -530,9 +528,9 @@ For now, the raw irc message will simply be displayed in the output window."
 
 (define-event error (buffer connection text)
   (display buffer "-!- Error: ~A" text)
-  (disconnect connection)
+  (disconnect connection))
   ;;(setf (connection (current-buffer)) nil)
-  (redraw))
+
 
 
 ;;; LIST
@@ -646,8 +644,7 @@ RPL_LISTEND (323)
         (display buffer "*** Topic for ~A: ~A" channel text)
         (let ((chan (find-channel channel connection)))
           (when chan
-            (setf (slot-value chan 'topic) text)
-            (redraw)))))))
+            (setf (slot-value chan 'topic) text)))))))
 
 ;; Number:   333
 ;; Event:    RPL_TOPICWHOTIME

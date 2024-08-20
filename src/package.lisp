@@ -44,8 +44,8 @@
    select-buffer
    changedp
    redraw
-   add-server-buffer
-   add-target-buffer
+   add-select-server-buffer
+   add-select-target-buffer
 
    ;; connection
    *connections*
@@ -165,8 +165,8 @@
    redraw
    connection-buffer
    target-buffer
-   add-server-buffer
-   add-target-buffer
+   add-select-server-buffer
+   add-select-target-buffer
    *connections*
    name
    nickname

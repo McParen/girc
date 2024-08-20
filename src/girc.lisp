@@ -49,9 +49,16 @@
              (show-buffer-line nil)
              (show-buffer-column t))))))
 
-
   ;; part current channel
-  (:f7  'cmd:part)
+  (:f7  (lambda ()
+          (cmd:part)
+          (redraw)))
+
+  ;; kill buffer
+  (:f8 (lambda ()
+         (cmd:buffer "kill")
+         (redraw)))
+
   ;; exit girc
   (:f12 'cmd:exit)
 
@@ -81,7 +88,8 @@
   ;; C-w = 23 = #\etb = End of Transmission Block
   ;; sends a quit message to the server. (replied by the server with an error message)
   (#\etb (lambda ()
-           (send t :quit))))
+           (send t :quit)
+           (redraw))))
 
 (defun bind (key function)
   "Bind a key to the default girc keymap."
@@ -237,6 +245,19 @@ If str is not a hostname, return nil."
           ;; start ui, load init, then handle the remaining command args.
           (progn
             (setq *ui* (make-instance 'user-interface))
+
+            ;; initialize the buffer lists BEFORE loading the init file because we maybe join channels or add buffers during init.
+            ;; the buffer lists are part of the ui and should be initialized as early as possible
+            (adjust-region *buffer-column-grid*
+                           ;; new visible number of rows in the buffers window.
+                           (- (crt:height (main-screen *ui*))
+                              2 ; status and input line
+                              (if (crt:find-node :topic (slot-value *ui* 'layout))
+                                  1
+                                  0)))
+            (adjust-region *buffer-line-grid*
+                           (floor (/ (crt:width (main-screen *ui*)) 12)))
+
             (load-init-file)
             (handle-command-args)
             (when conf:show-buffer-list
