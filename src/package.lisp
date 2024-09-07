@@ -22,6 +22,7 @@
    display-logo
    display-info
    bind
+   hostname-p
 
    ;; parse
    join-args
@@ -30,6 +31,7 @@
 
    ;; buffer
    buffer
+   currentp
    connection-buffer
    target-buffer
    find-buffer
@@ -139,68 +141,21 @@
    "Functions that can be called from the command line.")
   (:use :common-lisp)
 
-  ;; Import functions from the core package so we can use them without
-  ;; the package prefix, which means we cant use them as commands at the
-  ;; same time.
-
-  ;; For a new command to be added, remove it from the import list first.
-  (:import-from #:girc
-   display-logo
-   display-info
-   join-args
-   string-join
-   channelp
-   channels
-   connection
-   target
-   *buffers*
-   current-buffer
-   find-buffer
-   get-buffer
-   display
-   echo
-   remove-buffer
-   select-buffer
-   changedp
-   redraw
-   connection-buffer
-   target-buffer
-   add-select-server-buffer
-   add-select-target-buffer
-   *connections*
-   name
-   nickname
-   hostname
-   port
-   sslp
-   connectedp
-   rpl-list-channels
-   nicknames
-   send
-   send-raw-message
-   add-connection
-   find-connection
-   add-channel
-   remove-channel
-   find-channel
-   add-nick
-   remove-nick
-   make-ctcp-message
-   *event-handlers*
-   *ui*
-   layout
-   output-window
-   input-field
-   show-buffer-line
-   show-buffer-column
-   show-topic-line)
+  ;; Import some often used functions from the core package so we can
+  ;; use them without the package prefix, which also means we cant use
+  ;; them as commands at the same time.
+  ;; To add a new commend with one of these names, remove it from the
+  ;; import list first.
+  ;;(:import-from #:girc
+  ;; echo)
 
   ;; shadow command names that collide with standard cl functions
   (:shadow
    quote)
 
   ;; To be recognized as /commands, symbols have to be exported from
-  ;; the command package, either here or by the separate export function.
+  ;; the command package, either here or by a separate call export function
+  ;; for example from gircrc.
   (:export
    ctcp
    action

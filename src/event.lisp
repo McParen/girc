@@ -137,11 +137,11 @@ For now, the raw irc message will simply be displayed in the output window."
 ;; Example: :calcium.libera.chat CAP * LS :account-notify away-notify chghost extended-join multi-prefix sasl tls ...
 ;; Example: :osmium.libera.chat CAP haom ACK :sasl
 ;; Example: :calcium.libera.chat CAP * ACK :sasl
-(define-event cap (buffer connection params text)
-  (destructuring-bind (user subcommand) params
+(define-event cap (buffer connection params)
+  (destructuring-bind (user subcommand args) params
     (alexandria:switch (subcommand :test #'string=)
       ("LS"
-       (let ((available (split text)))
+       (let ((available (split args)))
          (if (and available
                   (member "sasl" available :test #'string=))
              ;; SASL capability available, proceed with request.
@@ -149,7 +149,7 @@ For now, the raw irc message will simply be displayed in the output window."
              (irc:cap connection "REQ" "sasl")
              (echo buffer "-!- SASL capability not supported by server"))))
       ("ACK"
-       (let ((enabled (split text)))
+       (let ((enabled (split args)))
          (if (and enabled
                   (member "sasl" enabled :test #'string=))
              ;; SASL capability enabled, proceed with authentication request.
@@ -172,14 +172,15 @@ For now, the raw irc message will simply be displayed in the output window."
 ;; Commend: Response to a nickServ login, whether by msg, pass or sasl.
 ;; Syntax:  :server 900 <nick> <nick>!<ident>@<host> <account> :You are now logged in as <user>
 ;; Example: :osmium.libera.chat 900 haom haom!myuser@user/mcparen BigusNickus :You are now logged in as BigusNickus
-(define-event rpl-loggedin (buffer text)
-  (echo buffer "***" text))
+(define-event rpl-loggedin (buffer params)
+  (destructuring-bind (nick prefix account text) params
+    (echo buffer "***" text)))
 
 ;; Comment: If SASL auth is successful, server replies with rpl-saslsuccess (603).
 ;;          The handler must close the capability negotiation with CAP END.
 ;; Example: :sodium.libera.chat 903 BigusNickus :SASL authentication successful
-(define-event rpl-saslsuccess (buffer connection params text)
-  (destructuring-bind (nick) params
+(define-event rpl-saslsuccess (buffer connection params)
+  (destructuring-bind (nick text) params
     (echo buffer "***" text)
     (irc:cap connection "END")))
 
@@ -190,9 +191,8 @@ For now, the raw irc message will simply be displayed in the output window."
 ;; Example: :haom!~myuser@78-2-83-238.adsl.net.com.com JOIN :#testus
 ;; Example: :haom!~myuser@78-2-83-238.adsl.net.com.com JOIN #testus
 ;; Example: :haoms!~mcp@dslb-178-001-122-235.178.001.pools.vodafone-ip.de JOIN :#IRC30
-(define-event join (connection prefix-nick command params text)
-  (let* ((channel (cond (text text)
-                        (params (nth 0 params)))))
+(define-event join (connection prefix-nick command params)
+  (destructuring-bind (channel) params
     ;; when your own nick joins the channel
     (when (string-equal prefix-nick (nickname connection))
       ;; add a channel object to the connection
@@ -211,7 +211,6 @@ For now, the raw irc message will simply be displayed in the output window."
                   (select-buffer (name connection) channel))
                 ;; otherwise make a new one.
                 (add-select-target-buffer (name connection) channel)))))
-
     ;; other nicks join the channel
     ;; which means you already are on the channel and channel object exists.
     (let ((buf (get-buffer (name connection) channel))
@@ -240,8 +239,8 @@ For now, the raw irc message will simply be displayed in the output window."
 ;; :ChanServ!ChanServ@services.libera.chat NOTICE haoms :***** End of Help *****
 ;; :MemoServ!MemoServ@services.libera.chat NOTICE haoms :***** MemoServ Help *****
 
-(define-event notice (rawmsg connection prefix-nick prefix-host params text)
-  (destructuring-bind (target) params
+(define-event notice (rawmsg connection prefix-nick prefix-host params)
+  (destructuring-bind (target text) params
     (let* ((source (if prefix-nick
                        ;; nick!user@host
                        prefix-nick
@@ -276,10 +275,10 @@ For now, the raw irc message will simply be displayed in the output window."
 ;; Examples:
 ;; :haom!~myuser@freenode-4bt.6qi.vs9qrf.IP PART :#linux
 ;; :another!~another@freenode-bn0om7.k2om.k054.fah2pm.IP PART #linux :"So we must part ways"
-(define-event part (connection prefix-nick command params text)
-  (let* ((channel (if params (nth 0 params) text))
+(define-event part (connection prefix-nick command params)
+  (let* ((channel (nth 0 params))
          (chan (find-channel channel connection))
-         (reason (if (and params text) text nil))
+         (reason (if (> (length params) 1) (nth 1 params) nil))
          ;; if there is a buffer for the channel, send part to that buffer
          (buffer (get-buffer (name connection) channel)))
     ;; if this is not your own nick, remove it from the channel list.
@@ -295,40 +294,20 @@ For now, the raw irc message will simply be displayed in the output window."
       (setf (target buffer) nil))))
 
 ;; Event:   NICK
-;; Syntax:  :<prefix> NICK <old-nick> :<new-nick>
+;; Syntax:  :<prefix> NICK :<new-nick>
 ;; Example: :_vanessa_!~farawayas@user/farawayastronaut NICK :vaness
 ;; Example: :ohokthen!~igloo@172.58.165.154 NICK :FarMoreSinister
 ;; Example: :haom!~myuser@ip-22-111.un55.pool.myip.com NICK :haoms
-(define-event nick (buffer prefix-nick prefix-user connection text)
-  ;; if it is your own nick
-  (when (string-equal prefix-nick (nickname connection))
-    ;; update the client nickname
-    (setf (nickname connection) text)
-    ;; display the change to the server buffer
-    (display buffer "*** You are now known as ~A" text))
-    ;; redraw updates the status line
-
-  ;; display the change to chans where the nick is present
-  (when (crt:children buffer)
-    (dolist (buf (crt:children buffer))
-      (when (and (target buf)
-                 ;; check if target is a channel
-                 (find-channel (target buf) connection)
-                 (member prefix-nick
-                         (nicknames (find-channel (target buf) connection))
-                         :test #'string=))
-        (remove-nick prefix-nick (find-channel (target buf) connection))
-        (add-nick text (find-channel (target buf) connection))
-        (if text
-            (display buf "*** ~A is now known as ~A" prefix-nick text)
-            (echo buf "***" prefix-nick "is now known as ..."))))))
-
-;; Event:   QUIT
-;; Syntax:  :<prefix> QUIT :<reason>
-;; Comment: Generates an ERROR reply.
-;; Example: :haom!~myuser@ip-088-152-010-043.um26.pools.vodafone-ip.de QUIT :Client Quit
-(define-event quit (buffer prefix-nick connection text)
-  (if (crt:children buffer)
+(define-event nick (buffer prefix-nick prefix-user connection params)
+  (destructuring-bind (new-nick) params
+    ;; if it is your own nick
+    (when (string-equal prefix-nick (nickname connection))
+      ;; update the client nickname
+      (setf (nickname connection) new-nick)
+      ;; display the change to the server buffer
+      (display buffer "*** You are now known as ~A" new-nick))
+    ;; display the change to chans where the nick is present
+    (when (crt:children buffer)
       (dolist (buf (crt:children buffer))
         (when (and (target buf)
                    ;; check if target is a channel
@@ -337,19 +316,40 @@ For now, the raw irc message will simply be displayed in the output window."
                            (nicknames (find-channel (target buf) connection))
                            :test #'string=))
           (remove-nick prefix-nick (find-channel (target buf) connection))
-          (if text
-              (display buf "*** ~A quit (~A)" prefix-nick text)
-              (echo buf "***" prefix-nick "quit"))))
-      ;; if there are no channels, and you quit, display a quit message in the server buffer.
-      (when (string-equal (nickname connection) prefix-nick)
-        (echo buffer "*** You quit" (name connection)))))
+          (add-nick new-nick (find-channel (target buf) connection))
+          (if new-nick
+              (display buf "*** ~A is now known as ~A" prefix-nick new-nick)
+              (echo buf "***" prefix-nick "is now known as ...")))))))
 
-(define-event ping (buffer rawmsg connection text)
-  (when conf:show-server-ping
-    (echo buffer rawmsg)
-    (display buffer "PONG :~A" text))
-  ;; return a PONG to the server which sent the PING.
-  (irc:pong connection text))
+;; Event:   QUIT
+;; Syntax:  :<prefix> QUIT :<reason>
+;; Comment: Generates an ERROR reply.
+;; Example: :haom!~myuser@ip-088-152-010-043.um26.pools.vodafone-ip.de QUIT :Client Quit
+(define-event quit (buffer prefix-nick connection params)
+  (destructuring-bind (reason) params
+    (if (crt:children buffer)
+        (dolist (buf (crt:children buffer))
+          (when (and (target buf)
+                     ;; check if target is a channel
+                     (find-channel (target buf) connection)
+                     (member prefix-nick
+                             (nicknames (find-channel (target buf) connection))
+                             :test #'string=))
+            (remove-nick prefix-nick (find-channel (target buf) connection))
+            (if reason
+                (display buf "*** ~A quit (~A)" prefix-nick reason)
+                (echo buf "***" prefix-nick "quit"))))
+        ;; if there are no channels, and you quit, display a quit message in the server buffer.
+        (when (string-equal (nickname connection) prefix-nick)
+          (echo buffer "*** You quit" (name connection))))))
+
+(define-event ping (buffer rawmsg connection params)
+  (destructuring-bind (token) params
+    (when conf:show-server-ping
+      (echo buffer rawmsg)
+      (display buffer "PONG :~A" token))
+    ;; return a PONG to the server which sent the PING.
+    (irc:pong connection token)))
 
 ;; Syntax: :<prefix> PRIVMSG <target> :<text>
 ;; Examples:
@@ -357,8 +357,8 @@ For now, the raw irc message will simply be displayed in the output window."
 ;; :leo!~leo@host-205-241-38-153.acelerate.net PRIVMSG #ubuntu :im a newbie
 ;; :moah!~gnu@dslb.host-ip.net PRIVMSG arrk13 :test back
 ;; :haom!~myuser@93-142-151-146.adsl.net.com.de PRIVMSG haom :hello there
-(define-event privmsg (prefix-nick params connection text)
-  (destructuring-bind (target) params
+(define-event privmsg (prefix-nick connection params)
+  (destructuring-bind (target text) params
     (let ((buf (get-buffer (name connection) target)))
       (when text
         (if (ctcp-message-p text)
@@ -384,10 +384,14 @@ For now, the raw irc message will simply be displayed in the output window."
                 (let ((buf (get-buffer (name connection) prefix-nick)))
                   (display buf "*~A* ~A" prefix-nick text))))))))
 
+;;; WORK 230320 END
+
+
 (defun display-event-text (msg)
   "Basic event handler to simply display the message text."
-  (with-msg (buffer text) msg
-    (echo buffer text)))
+  (with-msg (buffer params) msg
+    ;; text is the last param
+    (echo buffer (car (last params)))))
 
 ;; Event:   WALLOPS
 ;; Syntax:  :<prefix> WALLOPS :<text>
@@ -486,12 +490,13 @@ For now, the raw irc message will simply be displayed in the output window."
 ;; Event:   RPL_STATSCONN
 ;; Example: :tantalum.libera.chat 250 haom :Highest connection count: 4414 (4413 clients) (289303 connections received)
 ;;(bind-event rpl-statsconn 'display-event-text)
-(define-event rpl-statsconn (buffer text connection)
-  (echo buffer text)
-  (with-slots (autojoin) connection
-    ;; after the last login reply, if there are autojoin channels, join them.
-    (when autojoin
-      (irc:join t autojoin))))
+(define-event rpl-statsconn (buffer connection params)
+  (destructuring-bind (target text) params
+    (echo buffer text)
+    (with-slots (autojoin) connection
+      ;; after the last login reply, if there are autojoin channels, join them.
+      (when autojoin
+        (irc:join t autojoin)))))
 
 
 ;;; Replies sent as response to a command
@@ -501,35 +506,39 @@ For now, the raw irc message will simply be displayed in the output window."
 ;; Syntax:  :<prefix> 375 <nick> :<text>
 ;; Comment: Start of a MOTD response
 ;; Example: :erbium.libera.chat 375 haom :- erbium.libera.chat Message of the Day -
-(define-event rpl-motdstart (buffer text)
-  (echo buffer "--- Start of /MOTD.")
-  (echo buffer text))
+(define-event rpl-motdstart (buffer params)
+  (destructuring-bind (target text) params
+    (echo buffer "--- Start of /MOTD.")
+    (echo buffer text)))
 
 ;; Number:  372
 ;; Event:   RPL_MOTD
 ;; Syntax:  :<prefix> 372 <nick> :<text>
 ;; Comment: MOTD file displayed line by line
 ;; Example: :kornbluth.freenode.net 372 haom :- Thank you for using freenode!
-(define-event rpl-motd (buffer text)
-  (echo buffer text))
+(define-event rpl-motd (buffer params)
+  (destructuring-bind (target text) params
+    (echo buffer text)))
 
 ;; Number:  376
 ;; Event:   RPL_ENDOFMOTD
 ;; Syntax:  :<prefix> 376 <nick> :<text>
 ;; Comment: End of a MOTD response
 ;; Example: :kornbluth.freenode.net 376 haom :End of /MOTD command.
-(define-event rpl-endofmotd (buffer text)
-  (echo buffer "---" text))
+(define-event rpl-endofmotd (buffer params)
+  (destructuring-bind (target text) params
+    (echo buffer "---" text)))
 
 ;;; ERROR
 
 ;; Comment: Reply to QUIT
 ;; Example: ERROR :Closing Link: 78-2-83-238.adsl.net.com.com (Quit: haom)
 
-(define-event error (buffer connection text)
-  (display buffer "-!- Error: ~A" text)
-  (disconnect connection))
-  ;;(setf (connection (current-buffer)) nil)
+(define-event error (buffer connection params)
+  (destructuring-bind (text) params
+    (display buffer "-!- Error: ~A" text)
+    (disconnect connection)))
+    ;;(setf (connection (current-buffer)) nil)
 
 
 
@@ -557,8 +566,8 @@ RPL_LISTEND (323)
       (setf rpl-list-end-p nil
             rpl-list-channels nil))))
 
-(define-event rpl-list (connection params text)
-  (destructuring-bind (nick channel user-number) params
+(define-event rpl-list (connection params)
+  (destructuring-bind (nick channel user-number topic) params
     (with-slots (rpl-list-channels rpl-list-end-p) connection
       (when rpl-list-end-p
         ;; if the last reply was a list ending,
@@ -567,7 +576,7 @@ RPL_LISTEND (323)
               rpl-list-channels nil))
       ;; add the channel data to the list in the following format:
       ;; (name user-number topic)
-      (push (list channel (parse-integer user-number) text) rpl-list-channels))))
+      (push (list channel (parse-integer user-number) topic) rpl-list-channels))))
 
 (define-event rpl-listend (connection buffer)
   (with-slots (rpl-list-end-p rpl-list-channels) connection
@@ -586,9 +595,9 @@ RPL_LISTEND (323)
 ;; Event:   RPL_NAMREPLY
 ;; Syntax:  :<prefix> 353 <nick> = <channel> :<nicks>
 ;; Example: :irc.efnet.nl 353 haom = #test :@haom
-(define-event rpl-namreply (connection params text)
-  (destructuring-bind (nick _ channel) params
-    (when text
+(define-event rpl-namreply (connection params)
+  (destructuring-bind (nick _ channel nicks) params
+    (when nicks
       (let ((chan (find-channel channel connection)))
         (when chan
           (with-slots (nicknames rpl-namreply-started-p) chan
@@ -596,8 +605,8 @@ RPL_LISTEND (323)
               ;; set the start flag to t, will be set to finished in 366
               (setf rpl-namreply-started-p t
                     nicknames nil))
-            ;; push the nicks to the nicknames slot
-            (dolist (nick (split text))
+            ;; push the nicks to the nicknames slot of the chan
+            (dolist (nick (split nicks))
               (add-nick nick chan))))))))
 
 ;; Number:  366
@@ -605,7 +614,7 @@ RPL_LISTEND (323)
 ;; Syntax:  :<prefix> 366 <nick> <channel> :<info>
 ;; Example: :irc.efnet.nl 366 haom #test :End of /NAMES list.
 (define-event rpl-endofnames (connection params)
-  (destructuring-bind (nick channel) params
+  (destructuring-bind (nick channel info) params
     (let ((chan (find-channel channel connection)))
       (when chan
         ;; set the flag back to finished, was set to started in 353
@@ -626,25 +635,25 @@ RPL_LISTEND (323)
 ;; Syntax:  :<prefix> 328 <client> <channel> :<url>
 ;; Comment: Reply when joining a ChanServ registered channel.
 ;; Example: :services. 328 haoms #guix :https://guix.gnu.org
-(define-event rpl-channel-url (connection params text)
-  (destructuring-bind (client channel) params
+(define-event rpl-channel-url (connection params)
+  (destructuring-bind (client channel url) params
     (let ((buffer (get-buffer (name connection) channel)))
-      (when text
-        (display buffer "*** URL for ~A: ~A" channel text)))))
+      (when url
+        (display buffer "*** URL for ~A: ~A" channel url)))))
 
 ;; Number:   332
 ;; Event:    RPL_TOPIC
 ;; Reply to: JOIN, TOPIC
 ;; Syntax:   :<prefix> 332 <client> <channel> :<topic>
 ;; Example:  :kornbluth.freenode.net 332 McParen #ubuntu :Official Ubuntu Support Channel
-(define-event rpl-topic (connection params text)
-  (destructuring-bind (client channel) params
+(define-event rpl-topic (connection params)
+  (destructuring-bind (client channel topic) params
     (let ((buffer (get-buffer (name connection) channel)))
-      (when text
-        (display buffer "*** Topic for ~A: ~A" channel text)
+      (when topic
+        (display buffer "*** Topic for ~A: ~A" channel topic)
         (let ((chan (find-channel channel connection)))
           (when chan
-            (setf (slot-value chan 'topic) text)))))))
+            (setf (slot-value chan 'topic) topic)))))))
 
 ;; Number:   333
 ;; Event:    RPL_TOPICWHOTIME
@@ -658,15 +667,11 @@ RPL_LISTEND (323)
 ;; Syntax2:  :<prefix> 333 <client> <channel> <nick> :<setat>
 ;; Examples:
 ;; :lux.freenode.net 333 haom #linux oxek :1623786160
-(define-event rpl-topicwhotime (buffer rawmsg connection params text)
+(define-event rpl-topicwhotime (buffer rawmsg connection params)
   (cond ((= (length params) 4)
          (destructuring-bind (client channel nick setat) params
            (display (get-buffer (name connection) channel)
                     "*** The topic was set by ~A on ~A." nick setat)))
-        ((= (length params) 3)
-         (destructuring-bind (client channel nick) params
-           (display (get-buffer (name connection) channel)
-                    "*** The topic was set by ~A on ~A." nick text)))
         (t
          (echo buffer rawmsg))))
 
@@ -688,23 +693,23 @@ RPL_LISTEND (323)
 ;; Syntax:  :<prefix> 311 <nick> <target nick> <user> <host> * :<real name>
 ;; Comment: Reply to WHOIS - Information about the user
 ;; Example: :calvino.freenode.net 311 arrk23 arrk23 ~arrakis24 hostname-ip.net * :McLachlan
-(define-event rpl-whoisuser (buffer params text)
-  (destructuring-bind (nick target user host star) params
+(define-event rpl-whoisuser (buffer params)
+  (destructuring-bind (nick target user host star real) params
     (echo buffer "--- Start of /WHOIS list.")
     (echo buffer "Nick:" target)
     (echo buffer "User:" user)
     (echo buffer "Host:" host)
-    (echo buffer "Real:" text)))
+    (echo buffer "Real:" real)))
 
 ;; Number:  312
 ;; Event:   RPL_WHOISSERVER
 ;; Syntax:  :<prefix> 312 <nick> <target nick> <server> :<server location>
 ;; Comment: Reply to WHOIS - What server the user is on
 ;; Example: :calvino.freenode.net 312 arrk23 arrk23 calvino.freenode.net :Milan, IT
-(define-event rpl-whoisserver (buffer params text)
-  (destructuring-bind (nick target server) params
+(define-event rpl-whoisserver (buffer params)
+  (destructuring-bind (nick target server location) params
     (echo buffer "Server:" server)
-    (echo buffer "Location:" text)))
+    (echo buffer "Location:" location)))
 
 ;; Number:  317
 ;; Event:   RPL_WHOISIDLE
@@ -712,8 +717,8 @@ RPL_LISTEND (323)
 ;; Comment: Reply to WHOIS - Idle information
 ;; Example: :sendak.freenode.net 317 arrk23 arrk23 32 1316203528 :seconds idle, signon time
 ;; Example: :irc.efnet.nl 317 haom haom 72 1589142682 :seconds idle, signon time
-(define-event rpl-whoisidle (buffer params text)
-  (destructuring-bind (nick target seconds-idle signon-time) params
+(define-event rpl-whoisidle (buffer params)
+  (destructuring-bind (nick target seconds-idle signon-time text) params
     (display buffer "~A: ~A ~A" text seconds-idle signon-time)))
 
 ;; Number:  318
@@ -721,46 +726,49 @@ RPL_LISTEND (323)
 ;; Syntax:  :<prefix> 318 <nick> <target nick> :<info>
 ;; Comment: Reply to WHOIS - End of list
 ;; Example: :calvino.freenode.net 318 arrk23 arrk23 :End of /WHOIS list.
-(define-event rpl-endofwhois (buffer text)
-  (echo buffer "---" text))
+(define-event rpl-endofwhois (buffer params)
+  (destructuring-bind (nick target info) params
+    (echo buffer "---" info)))
 
 ;; Number:  319
 ;; Event:   RPL_WHOISCHANNELS
 ;; Syntax:  :<prefix> 318 <nick> <target nick> :{[@|+]<channel><space>}
 ;; Comment: Reply to WHOIS - Channel list for user
 ;; Example: :verne.freenode.net 319 McParen McParen :#python
-(define-event rpl-whoischannels (buffer text)
-  (echo buffer "Channels: " text))
+(define-event rpl-whoischannels (buffer params)
+  (destructuring-bind (nick target channels) params
+    (echo buffer "Channels: " channels)))
 
 ;; Number:  330
 ;; Event:   RPL_WHOISACCOUNT
 ;; Syntax:  :<prefix> 330 <nick> <target nick> <target authname> :<info>
 ;; Example: :verne.freenode.net 330 haom Joa Joa :is logged in as
-(define-event rpl-whoisaccount (buffer params text)
-  (destructuring-bind (nick target authname) params
-    (echo buffer target text authname)))
+(define-event rpl-whoisaccount (buffer params)
+  (destructuring-bind (nick target authname info) params
+    (echo buffer target info authname)))
 
 ;; Number:  338
 ;; Event:   RPL_WHOISACTUALLY
 ;; Syntax:  :<prefix> 338 <nick> <target nick> <host ip> :<text>
 ;; Example: :irc.efnet.nl 338 haom haom 92.73.73.213 :actually using host
-(define-event rpl-whoisactually (buffer params text)
-  (destructuring-bind (nick target host-ip) params
+(define-event rpl-whoisactually (buffer params)
+  (destructuring-bind (nick target host-ip text) params
     (display buffer "~A: ~A" text host-ip)))
 
 ;; Number:  378
 ;; Event:   RPL_WHOISHOST
 ;; Syntax:  :<prefix> 378 <nick> <target> :<info>
 ;; Example: :weber.freenode.net 378 haom haom :is connecting from *@93-137-20-95.adsl.net.com.com 92.111.22.5
-(define-event rpl-whoishost (buffer text)
-  (echo buffer text))
+(define-event rpl-whoishost (buffer params)
+  (destructuring-bind (nick target info) params
+    (echo buffer info)))
 
 ;; Number:  671
 ;; Event:   RPL_WHOISSECURE
 ;; Syntax:  :<prefix> 671 <client> <nick> :is using a secure connection
 ;; Example: :irc.mzima.net 671 haom neonjesus :is using a secure connection
-(define-event rpl-whoissecure (buffer params text)
-  (destructuring-bind (client nick) params
+(define-event rpl-whoissecure (buffer params)
+  (destructuring-bind (client nick text) params
     (echo buffer nick text)))
 
 
@@ -770,8 +778,8 @@ RPL_LISTEND (323)
 ;; Event:   ERR_BANNEDFROMCHAN
 ;; Syntax:  :<prefix> 474 <client> <channel> :Cannot join channel (+b)
 ;; Example: :irc.efnet.nl 474 haoms #efnet :Cannot join channel (+b)
-(define-event err-bannedfromchan (buffer params text)
-  (destructuring-bind (nick channel) params
+(define-event err-bannedfromchan (buffer params)
+  (destructuring-bind (client channel text) params
     (display buffer "-!- Error: ~A ~A" text channel)))
 
 ;; Number:

@@ -37,14 +37,7 @@
     :initform      nil
     :accessor      params
     :type          (or null cons)
-    :documentation "List of strings denoting the parameters.")
-
-   (text
-    :initarg       :text
-    :initform      nil
-    :accessor      text
-    :type          (or null string)
-    :documentation "Last parameter after the colon, usually denoting the body of the message."))
+    :documentation "List of strings denoting the parameters."))
 
   (:documentation "Object representing a parsed IRC protocol message."))
 
@@ -55,7 +48,7 @@
 (defmethod print-object ((obj irc-message) out)
   ;; unreadable objects are printed as <# xyz >
   (print-unreadable-object (obj out :type t)
-    (format out "~S / ~S / ~S / ~S" (prefix obj) (command obj) (params obj) (text obj))))
+    (format out "~S / ~S / ~S" (prefix obj) (command obj) (params obj))))
 
 ;; put every read char into an array of max 512 length.
 
@@ -111,11 +104,13 @@
   "Return t if #\: is the first char in the string, otherwise nil."
   (equal #\: (car (strlst str))))
 
-;; (get-prefix-and-command ":prefix command p1 p2 p3 :text1 text2") => ("prefix" "command" "p1 p2 p3 :text1 text2")
-;; (get-prefix-and-command "command p1 p2 p3 :text1 text2") => (NIL "command" "p1 p2 p3 :text1 text2")
-;; the result list is fed to get-params-and-text.
+;; (get-prefix-and-command ":prefix command p1 p2 p3 :text1 text2")
+;; => ("prefix" "command" "p1 p2 p3 :text1 text2")
+;; (get-prefix-and-command "command p1 p2 p3 :text1 text2")
+;; => (NIL "command" "p1 p2 p3 :text1 text2")
+;; the result list is fed to get-params
 (defun get-prefix-and-command (str)
-  "Take a string containing an irc message, return a list with the prefix command and rest of the message."
+  "Take a string containing a raw irc message, return a list with the prefix, command and a string of parameters."
   (let ((t1 (car (token str)))
         (r1 (cadr (token str))))
     (if (colonp t1)
@@ -159,23 +154,23 @@
 
 #|
 
-CL-USER> (get-params-and-text '("prefix" "command" "p1 p2 p3 :text1 text2"))
-(("p1" "p2" "p3") "text1 text2")
+CL-USER> (get-params '("prefix" "command" "p1 p2 p3 :text1 text2"))
+("p1" "p2" "p3" "text1 text2")
 
-CL-USER> (get-params-and-text '(NIL "command" "p1 p2 p3 :text1 text2"))
-(("p1" "p2" "p3") "text1 text2")
+CL-USER> (get-params '(NIL "command" "p1 p2 p3 :text1 text2"))
+("p1" "p2" "p3" "text1 text2")
 
 No prefix and no params:
 
 CL-USER> (get-prefix-and-command "COMMAND :text")
 (NIL "COMMAND" ":text")
-CL-USER> (get-params-and-text *)
-(NIL "text")
+CL-USER> (get-params *)
+("text")
 
 CL-USER> (get-prefix-and-command "ERROR :Closing Link: 78-2-83-238.adsl.net.com.com (Quit: haom)")
 (NIL "ERROR" ":Closing Link: 78-2-83-238.adsl.net.com.com (Quit: haom)")
-CL-USER> (get-params-and-text *)
-(NIL "Closing Link: 78-2-83-238.adsl.net.com.com (Quit: haom)")
+CL-USER> (get-params *)
+("Closing Link: 78-2-83-238.adsl.net.com.com (Quit: haom)")
 
 Params containing a colon:
 
@@ -184,34 +179,36 @@ Params containing a colon:
 
 CL-USER> (get-prefix-and-command ":prefix command p1 p2 p:3 :text")
 ("prefix" "command" "p1 p2 p:3 :text")
-CL-USER> (get-params-and-text *)
-(("p1" "p2" "p:3") "text")
+CL-USER> (get-params *)
+("p1" "p2" "p:3" "text")
 
 |#
 
-(defun get-params-and-text (lst)
-  "Take a list returned by get-prefix-and-command, return a list with a list of parameters and the text."
+(defun get-params (lst)
+  "Take a list returned by get-prefix-and-command, return a list of parameters."
   (let* ((str (third lst)))
     (if (char= (char str 0) #\:)
         ;; no parameters, only text: ":prefix command :text", ("prefix" "command" ":text")
-        (list nil
-              (subseq str 1))
+        (list (subseq str 1))
         ;; we have to use search (substring) instead of position (single char) to exclude
         ;; the case where a parameter contains the colon character, for example
         ;; ":prefix command p1 p2 #p:3 :text1 text2"
-        (let ((pos (search " :" str)))
-          (if pos
-              (list (remove "" (split-sequence:split-sequence #\space (subseq str 0 pos)) :test #'equal)
-                    (subseq str (+ 2 pos)))
-              (list (remove "" (split-sequence:split-sequence #\space (subseq str 0 pos)) :test #'equal)
-                    nil))))))
+        (let* ((pos (search " :" str))
+               (middle (split-sequence:split-sequence #\space (subseq str 0 pos) :remove-empty-subseqs t))
+               (trailing (if pos
+                             (list (subseq str (+ 2 pos)))
+                             nil)))
+          (append middle trailing)))))
 
-;; (parse ":prefix command p1 p2 p3 :text1 text2") => ("prefix" "command" ("p1" "p2" "p3") "text1 text2")
+;; unused, see parse-raw-message
+;; (parse ":prefix command p1 p2 p3 :text1 text2")
+;; => ("prefix" "command" ("p1" "p2" "p3" "text1 text2"))
 (defun parse2 (rawmsg)
   "Take a string containing an irc message, return a list with parsed components."
   (let* ((lst1 (get-prefix-and-command rawmsg))
-         (lst2 (get-params-and-text lst1)))
-    (append (list (car lst1) (cadr lst1)) lst2)))
+         (lst2 (get-params lst1)))
+    (append (list (car lst1) (cadr lst1))
+            lst2)))
 
 ;; position #\: str
 ;; count #\: str
@@ -221,14 +218,19 @@ CL-USER> (get-params-and-text *)
 (defun parse-raw-message (rawmsg connection)
   "Take a string containing an irc message, return a irc message object."
   (let* ((lst1 (get-prefix-and-command rawmsg))
-         (lst2 (get-params-and-text lst1)))
-    (make-instance 'irc-message :connection connection :rawmsg rawmsg :prefix (car lst1)
-                   :command (cadr lst1) :params (car lst2) :text (cadr lst2))))
+         (lst2 (get-params lst1)))
+    (make-instance 'irc-message :connection connection
+                                :rawmsg rawmsg :prefix (car lst1)
+                                :command (cadr lst1)
+                                :params lst2)))
 
 ;; Examples:
-;; (parse-user-input "/hello there dear john") => ("hello" . "there dear john")
-;; (parse-user-input "hello there dear john") => (NIL . "hello there dear john")
-;; (parse-user-input "/hello") => ("hello")
+;; (parse-user-input "/hello there dear john")
+;; => ("hello" . "there dear john")
+;; (parse-user-input "hello there dear john")
+;; => (NIL . "hello there dear john")
+;; (parse-user-input "/hello")
+;; => ("hello")
 (defun parse-user-input (str)
   "Split a user input string into a command, if the line beginns with /, and a string of arguments.
 
@@ -293,7 +295,7 @@ Default values have to be manually provided within the functions.
           (equalp (parse-user-arguments '(a b &rest c) "foo bar baz qux")
                   (list "foo" "bar" "baz qux")))
   ;; 5. rest parameter but no rest arguments
-  ;; a missing rest argument simple returns nothing
+  ;; a missing rest argument returns nothing, so lisp will return an empty list.
   (format t "5.~A "
           (equalp (parse-user-arguments '(a b &rest c) "foo bar")
                   (list "foo" "bar")))
@@ -328,7 +330,11 @@ Default values have to be manually provided within the functions.
   ;; 12. only keyword args, no required args
   (format t "12.~A "
           (equalp (parse-user-arguments '(&key d e f) ":c 1 :d 2")
-                  (list :C 1 :D 2))))
+                  (list :C 1 :D 2)))
+  ;; 13. keyword args with default arguments
+  (format t "13.~A "
+          (equalp (parse-user-arguments '(&key (a 1) b (c t)) ":b 2")
+                  (list :B 2))))
 
 ;; (parse-keyword-args ":a 1 :b 22 :c hello :d nil :e t")
 ;; => (:A 1 :B 22 :C "hello" :D NIL :E T)
@@ -349,13 +355,14 @@ is left as a string."
             collect i)))
 
 (defun parse-user-arguments (lbd str)
-  "Take a string and a lambda list, return a list of destructured tokens.
+  "Take a lambda list and a string, return a list of destructured tokens.
 
 Only as many tokens are parsed as there are parameters, the remaining
 tokens are ignored, unless the last parameter is a &rest parameter.
 
 &rest is the only lambda keyword supported. It collects all remaining
-arguments in a single string.
+arguments in a single string, to mirror the irc :trailing parameter
+that may contain spaces.
 
 If there are more parameters than string tokens, nil will be returned
 for each."
@@ -435,6 +442,13 @@ If there is a key in addition to rest, the rest string is parsed:
 CL-USER> (parse-argument-bind (a b &rest c &key d baz) "foo bar :baz 2 :d 1"
            (list a b c d baz))
 ("foo" "bar" (:BAZ 2 :D 1) 1 2)
+
+If the keyword parameters have default arguments, they are considered.
+
+CL-USER> (parse-argument-bind (&key (a 1) b (c t)) ":b 2"
+           (list a b c))
+(1 2 T)
+
 |#
 
 (defmacro parse-argument-bind (lbd str &body body)
