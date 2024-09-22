@@ -162,3 +162,35 @@
           (crt:calculate-layout (slot-value *ui* 'layout)))))
   (setf (changedp (current-buffer)) t)
   (redraw))
+
+;; we cant call eval from .gircrc because it requires ncurses to be initialized first.
+(defun eval (input)
+  "Take an input line, parse command and args and pass them to a handler function."
+  (destructuring-bind (cmd . args) (parse-user-input input)
+    (crt:save-excursion (input-window *ui*)
+      (if cmd
+          (let ((fun (cmd::get-command-handler cmd)))
+            (if fun
+                (apply fun (parse-user-arguments (sb-introspect:function-lambda-list fun) args))
+                ;; if no handler was found, use the default handler
+                (funcall (lambda (cmd args)
+                           (display t "-!- Undefined command: ~A ~A" cmd args))
+                         cmd args)))
+          ;; if no command was given, send the input to the current buffer target
+          (cmd::say args)))))
+
+;; used in girc.lisp
+(defun handle-user-command (field)
+  "Parse the content of the input line, call the function associated with the user command.
+
+At the moment, no default command is called if the first input token is not a /command.
+
+Bound to #\newline in girc-input-map."
+  (let ((input (crt:value field)))
+    (when input
+      (crt:reset field)
+      (eval input)
+      ;; redraw the screen if a command has been called from the input line.
+      ;; if a command has been directly called from a binding, it has to call redraw explicitely.
+      ;; event functions call redraw from connection/handle-server-input.
+      (redraw))))

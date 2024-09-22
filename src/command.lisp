@@ -1,53 +1,104 @@
-(in-package :de.anvi.girc)
-
-;; we cant call eval from .gircrc because it requires ncurses to be initialized first.
-(defun eval (input)
-  "Take an input line, parse command and args and pass them to a handler function."
-  (destructuring-bind (cmd . args) (parse-user-input input)
-    (crt:save-excursion (input-window *ui*)
-      (if cmd
-          (multiple-value-bind (symbol status)
-              (find-symbol (string-upcase cmd) 'de.anvi.girc.command)
-            (if (and symbol
-                     (eq status :external))
-                (let* ((fun (fboundp symbol)))
-                  (if fun
-                      (apply fun (parse-user-arguments (sb-introspect:function-lambda-list fun) args))
-                      ;; if no handler was found, use the default handler
-                      (funcall (lambda (cmd args)
-                                 (display t "-!- Undefined command: ~A ~A" cmd args))
-                               cmd args)))
-                (funcall (lambda (cmd args)
-                           (display t "-!- Undefined command: ~A ~A" cmd args))
-                         cmd args)))
-          ;; if no command was given, send the input to the current buffer target
-          (cmd:say args)))))
-
-(defun handle-user-command (field)
-  "Parse the content of the input line, call the function associated with the user command.
-
-At the moment, no default command is called if the first input token is not a /command.
-
-Bound to #\newline in girc-input-map."
-  (let ((input (crt:value field)))
-    (when input
-      (crt:reset field)
-      (eval input)
-      ;; redraw the screen if a command has been called from the input line.
-      ;; if a command has been directly called from a binding, it has to call redraw explicitely.
-      ;; event functions call redraw from connection/handle-server-input.
-      (redraw))))
-
+(in-package :de.anvi.girc.command)
 
 ;;; Implementation of user commands
 
-(in-package :de.anvi.girc.command)
+(defparameter *user-commands* nil)
 
-(defun logo ()
-  (girc:display-logo))
+;; when we want a quick command that is NOT defined as a reusable lisp
+;; function in the cmd package.
+(defmacro define-command (command lambda-list &body body)
+  "Define a user command to be called from the command line.
+
+If the command should also be callable as a lisp function, use defcmd
+instead.
+
+define-command is the command equivalent of define-event."
+  `(setf *user-commands*
+         (acons (symbol-name ',command)
+                (lambda ,lambda-list ,@body)
+                *user-commands*)))
+
+;; when we want to add a command but use a lisp function with another name,
+;; so it is like an alias, but it is not a lisp alias, so we cant use the
+;; command name as a lisp function, but have to call the original function.
+
+;; we need this for commands which would clash with functions from the
+;; cl package like list, load, open, close, warn, get, set, etc.
+
+(defmacro bind-command (command function)
+  "Bind a user command name to a handler function.
+
+The function can be given as a function object or a symbol
+representing a fbound function.
+
+bind-command is the command equivalent of bind-event."
+  `(setf *user-commands*
+         (acons (symbol-name ',command)
+                ,function
+                *user-commands*)))
+
+;; when we want to use the lisp function and the command of the same name.
+;; for example (cmd:buffer "kill"), (server "add"), etc.
+(defmacro defcmd (name lambda-list &body body)
+  "Define a command that can also be reused as a lisp function.
+
+defcmd is a thin wrapper around defun and bind-command that binds
+a command of same name as the function.
+
+The command functions can then be called, for exmaple, from the
+.gircrc init file to perform actions after the client start.
+
+Since the cmd package uses cl, if symbols from the cl have to be used,
+they have to be shadowed first."
+  `(progn
+     (defun ,name ,lambda-list ,@body)
+     (eval-when (:compile-toplevel :load-toplevel :execute)
+       (export ',name 'de.anvi.girc.command))
+     (when (fboundp ',name)
+       (bind-command ,name (fdefinition ',name)))))
+
+;; use equalp so that: CMD = cmd
+(defun get-command-handler (cmd)
+  "Take a string denoting a user command, return the handler function."
+  ;; equalp or string-equal so we can test strings regardless of the case.
+  (let ((cmd-pair (assoc cmd *user-commands* :test #'equalp)))
+    (if cmd-pair
+        (cdr cmd-pair)
+        nil)))
+
+(defun current-nickname ()
+  "Nickname of the current connection."
+  (girc:nickname (girc:connection (girc:current-buffer))))
+
+(defun current-nickname-p (nick)
+  (string-equal nick (girc:nickname (girc:connection (girc:current-buffer)))))
+
+(defun current-target ()
+  "Target (channel or nickname) of the current buffer."
+  (girc:target (girc:current-buffer)))
+
+(defun current-target-p (target)
+  (string-equal target (current-target)))
+
+(defun current-connection ()
+  "Connection associated with the current buffer."
+  (girc:connection (girc:current-buffer)))
+
+(defun current-server-name ()
+  (girc:name (current-connection)))
+
+;; Special read-only variables to abbreviate otherwise verbose command code.
+;; They return strings and correspond to epic special variables or expandos.
+;; https://epicsol.org/special_vars
+
+(define-symbol-macro $N (current-nickname))
+(define-symbol-macro $S (current-server-name))
+(define-symbol-macro $T (current-target))
+
+(bind-command logo 'girc:display-logo)
 
 ;; eval the lisp form given on the command line and print the _return_ in the buffer
-(defun lisp (&rest args)
+(define-command lisp (&rest args)
   (girc:echo t (eval (read-from-string (car args)))))
 
 #|
@@ -57,7 +108,7 @@ Bound to #\newline in girc-input-map."
 /channel list
 /channel list 20
 |#
-(defun channel (cmd &rest args)
+(define-command channel (cmd &rest args)
   (alexandria:switch (cmd :test #'string=)
     ("load"
      ;; load the channels from the server into a local list
@@ -65,11 +116,11 @@ Bound to #\newline in girc-input-map."
      (irc:list t (car args)))
     ("list"
      ;; display the n (default 10) largest channels to the server buffer
-     (if (girc:connection (girc:current-buffer))
-         (with-slots (girc:rpl-list-channels) (girc:connection (girc:current-buffer))
-           (if girc:rpl-list-channels
-               (let ((buf (girc:find-buffer (girc:name (girc:connection (girc:current-buffer))))))
-                 (loop for chan in girc:rpl-list-channels
+     (if (current-connection)
+         (with-slots ((chans girc:rpl-list-channels)) (current-connection)
+           (if chans
+               (let ((buf (girc:find-buffer $S)))
+                 (loop for chan in chans
                        ;; dont display the whole list, bit just args (default 10) channels.
                        repeat (if args
                                   (parse-integer (car args))
@@ -96,7 +147,7 @@ Bound to #\newline in girc-input-map."
 /buffer add <server> [ <target> ]
 
 |#
-(defun buffer (cmd &optional arg0 arg1)
+(defcmd buffer (cmd &optional arg0 arg1)
   (alexandria:switch (cmd :test #'string=)
     ("kill"
      (typecase (girc:current-buffer)
@@ -111,21 +162,7 @@ Bound to #\newline in girc-input-map."
        (girc:buffer
         (girc:echo t "-!- Can't kill the main buffer."))))
     ("list"
-     (girc:echo t "Number" "Connection" "Target" "Current")
-     (let ((n 0))
-       (labels ((show (buf)
-                  (typecase buf
-                    (girc:target-buffer
-                     (girc:echo t n (girc:name (girc:connection buf)) (girc:target buf) (girc:currentp buf)))
-                    (girc:connection-buffer
-                     (girc:echo t n (girc:name (girc:connection buf)) (girc:currentp buf)))
-                    (girc:buffer
-                     (girc:echo t n "main" (girc:currentp buf))))
-                  (incf n)
-                  (when (crt:children buf)
-                    (dolist (i (crt:children buf))
-                      (show i)))))
-         (show girc:*buffers*))))
+     (girc:print-buffer-list))
     ;; arg0 := <server>
     ;; arg1 := <target>
     ("add"
@@ -145,9 +182,9 @@ Bound to #\newline in girc-input-map."
          (girc:echo t "-!- Server not given.")))
     ("names"
      (if (and (typep (girc:current-buffer) 'girc:target-buffer)
-              (girc:target (girc:current-buffer))
-              (girc:channelp (girc:target (girc:current-buffer))))
-         (let ((chan (find (girc:target (girc:current-buffer))
+              $T
+              (girc:channelp $T))
+         (let ((chan (find $T
                            (girc:channels (girc:connection (girc:current-buffer)))
                            :key #'girc:name
                            :test #'string=)))
@@ -192,7 +229,7 @@ Bound to #\newline in girc-input-map."
 
 ;; /info
 ;; /info event
-(defun info (arg)
+(define-command info (arg)
   (alexandria:switch (arg :test #'string=)
     ("event"
      (apply #'girc:echo t (loop for h in girc:*event-handlers* collect (car h))))
@@ -210,7 +247,7 @@ Bound to #\newline in girc-input-map."
 ;; /server add lib irc.libera.chat
 ;; /server add freenode irc.freenode.net :nickname haom
 ;; /server add freenode irc.freenode.net :nickname haom :port 6697 :ssl t :nickserv MyNick:MyPass :login-method :sasl
-(defun server (cmd name host &rest args &key &allow-other-keys)
+(defcmd server (cmd name host &rest args &key &allow-other-keys)
   (alexandria:switch (cmd :test #'string=)
     ("add"
      (if (and name host)
@@ -242,7 +279,7 @@ Bound to #\newline in girc-input-map."
 ;; /connect
 ;; /connect <server name>
 ;; /connect <hostname> <nick>
-(defun connect (name &optional nick)
+(defcmd connect (name &optional nick)
   (if name
       (progn
         (when (girc::hostname-p name)
@@ -267,13 +304,13 @@ Bound to #\newline in girc-input-map."
       (if (and (typep (girc:current-buffer) 'girc:connection-buffer)
                (girc:connection (girc:current-buffer)))
           (if (girc:connectedp (girc:connection (girc:current-buffer)))
-              (girc:echo t "-!- Server already connected: " (girc:name (girc:connection (girc:current-buffer))))
+              (girc:echo t "-!- Server already connected: " $S)
               (progn
                 (girc:connect (girc:connection (girc:current-buffer)))))
           (girc:echo t "-!- Buffer not associated with a connection."))))
 
 ;; /exit
-(defun exit ()
+(defcmd exit ()
   (crt:exit-event-loop (girc:input-field girc:*ui*) nil))
 
 ;; /join #channel
@@ -281,7 +318,7 @@ Bound to #\newline in girc-input-map."
 
 ;;; TODO 231001 /join #c1,#c2 #k1,#k2
 
-(defun join (channel)
+(defcmd join (channel)
   "Send a request to join the channel on the current server.
 
 The channel is joined when a join event returned by the server is
@@ -303,62 +340,56 @@ channel and receive an error message, for example 474."
 ;; *nick* hello nick
 ;; <nick@#chan> hello other channel
 ;; *nick@nick2* hello other nick
-(defun msg (target &rest text)
+(defun display-send-msg (target text &optional show-target-p)
+  (if show-target-p
+      (if (girc:channelp target)
+          (girc:display t "<~A@~A> ~A" $N target (car text))
+          (girc:display t "*~A@~A* ~A" $N target (car text)))
+      (if (girc:channelp target)
+          (girc:display t "<~A> ~A" $N (car text))
+          (girc:display t "*~A* ~A" $N (car text))))
+  (irc:privmsg t target (car text)))
+
+(defcmd msg (target &rest text)
   (typecase (girc:current-buffer)
     (girc:connection-buffer
-     (if (girc:connection (girc:current-buffer))
-         (if (girc:connectedp (girc:connection (girc:current-buffer)))
-             (progn
-               (if (girc:channelp target)
-                   (girc:display t "<~A> ~A" (girc:nickname (girc:connection (girc:current-buffer))) (car text))
-                   (girc:display t "*~A* ~A" (girc:nickname (girc:connection (girc:current-buffer))) (car text)))
-               (irc:privmsg t target (car text)))
-             (girc:echo t "-!- Server not connected:" (girc:name (girc:connection (girc:current-buffer)))))
-         (girc:echo t "-!- Buffer not associated with a connection.")))
+     (if (current-connection)
+         (if (girc:connectedp (current-connection))
+             (display-send-msg target text t)
+             (girc:echo t "-!- Server not connected:" $S))
+         (girc:echo t "-!- Buffer not associated with a server.")))
     (girc:target-buffer
-     (if (string-equal target (girc:target (girc:current-buffer)))
-         (progn
-           (if (girc:channelp target)
-               (girc:display t "<~A> ~A" (girc:nickname (girc:connection (girc:current-buffer))) (car text))
-               (girc:display t "*~A* ~A" (girc:nickname (girc:connection (girc:current-buffer))) (car text)))
-           (irc:privmsg t target (car text)))
-         (progn
-           (if (girc:channelp target)
-               (girc:display t "<~A@~A> ~A" (girc:nickname (girc:connection (girc:current-buffer))) target (car text))
-               (girc:display t "*~A@~A* ~A" (girc:nickname (girc:connection (girc:current-buffer))) target (car text)))
-           (irc:privmsg t target (car text)))))
+     (display-send-msg target text (not (current-target-p target))))
     (girc:buffer
-     (girc:echo t "-!- Buffer not associated with a connection."))))
+     (girc:echo t "-!- Buffer not associated with a server."))))
 
 ;; /query
 ;; /query <nick>
-(defun query (nick)
+(defcmd query (nick)
   (typecase (girc:current-buffer)
     ((or girc:connection-buffer
          girc:target-buffer)
-     (if (girc:connection (girc:current-buffer))
+     (if (current-connection)
          (if nick
-             (if (string-equal nick
-                               (girc:nickname (girc:connection (girc:current-buffer))))
+             (if (current-nickname-p nick)
                  (girc:display t "-!- ~A is your own nickname." nick)
                  (if (and nick
-                          (girc:find-buffer (girc:name (girc:connection (girc:current-buffer))) nick))
-                     (girc:echo t "-!- Buffer already exists:" (girc:name (girc:connection (girc:current-buffer))) nick)
+                          (girc:find-buffer $S nick))
+                     (girc:echo t "-!- Buffer already exists:" $S nick)
                      (typecase (girc:current-buffer)
                        (girc:target-buffer
-                        (if (null (girc:target (girc:current-buffer)))
+                        (if (null $T)
                             (setf (girc:target (girc:current-buffer)) nick)
-                            (progn
-                              (girc:add-select-target-buffer (girc:name (girc:connection (girc:current-buffer))) nick)))
+                            (girc:add-select-target-buffer $S nick))
                         (girc:echo t "*** Starting a query with" nick))
                        (girc:connection-buffer
-                        (girc:add-select-target-buffer (girc:name (girc:connection (girc:current-buffer))) nick)
+                        (girc:add-select-target-buffer $S nick)
                         (girc:echo t "*** Starting a query with" nick)))))
              (if (typep (girc:current-buffer) 'girc:target-buffer)
-                 (if (and (girc:target (girc:current-buffer))
-                          (not (girc:channelp (girc:target (girc:current-buffer)))))
-                     (let* ((tgt (girc:target (girc:current-buffer)))
-                            (buf (girc:find-buffer (girc:name (girc:connection (girc:current-buffer))) tgt)))
+                 (if (and $T
+                          (not (girc:channelp $T)))
+                     (let* ((tgt $T)
+                            (buf (girc:find-buffer $S tgt)))
                        (girc:echo buf "*** Ending the query with" tgt)
                        (setf (girc:target (girc:current-buffer)) nil))
                      (girc:echo t "-!- Current target is not a query."))
@@ -369,7 +400,7 @@ channel and receive an error message, for example 474."
 
 ;; /ctcp #testus ACTION tests this command.
 ;; * haoms tests this command.
-(defun ctcp (target command &rest args)
+(defcmd ctcp (target command &rest args)
   (typecase (girc:current-buffer)
     ((or girc:connection-buffer
          girc:target-buffer)
@@ -377,24 +408,24 @@ channel and receive an error message, for example 474."
     (girc:buffer
      (girc:echo t "-!- Buffer not associated with a connection."))))
 
-(defun action (target &rest text)
+(defcmd action (target &rest text)
   (typecase (girc:current-buffer)
     ((or girc:connection-buffer
          girc:target-buffer)
      (if text
          (progn
            (irc:ctcp t target "ACTION" (car text))
-           (girc:display t "* ~A ~A" (girc:nickname (girc:connection (girc:current-buffer))) (car text)))
+           (girc:display t "* ~A ~A" $N (car text)))
          (girc:display t "-!- CTCP ACTION requires a text argument.")))
     (girc:buffer
      (girc:echo t "-!- Buffer not associated with a connection."))))
 
-(defun me (&rest text)
+(define-command me (&rest text)
   (typecase (girc:current-buffer)
     (girc:target-buffer
-     (if (girc:target (girc:current-buffer))
+     (if $T
          (if text
-             (action (girc:target (girc:current-buffer)) (car text))
+             (action $T (car text))
              (girc:echo t "-!- Required argument: /me <text>"))
          (girc:echo t "-!- No target associated with the curent buffer.")))
     (girc:connection-buffer
@@ -405,7 +436,7 @@ channel and receive an error message, for example 474."
 ;; /nick new-nick
 ;; The changes to the client settings happen when the server replies,
 ;; because it is possible that we cant use the new nick.
-(defun nick (new-nick)
+(defcmd nick (new-nick)
   (typecase (girc:current-buffer)
     ((or girc:connection-buffer
          girc:target-buffer)
@@ -416,19 +447,15 @@ channel and receive an error message, for example 474."
      (girc:echo t "-!- Buffer not associated with a connection."))))
 
 ;; /say hello there dear john
-(defun say (&rest text)
+(defcmd say (&rest text)
   (typecase (girc:current-buffer)
     (girc:target-buffer
-     (if (girc:connection (girc:current-buffer))
-         (if (girc:connectedp (girc:connection (girc:current-buffer)))
-             (if (girc:target (girc:current-buffer))
-                 (progn
-                   (if (girc:channelp (girc:target (girc:current-buffer)))
-                       (girc:display t "<~A> ~A" (girc:nickname (girc:connection (girc:current-buffer))) (car text))
-                       (girc:display t "*~A* ~A" (girc:nickname (girc:connection (girc:current-buffer))) (car text)))
-                   (irc:privmsg t (girc:target (girc:current-buffer)) (car text)))
+     (if (current-connection)
+         (if (girc:connectedp (current-connection))
+             (if $T
+                 (display-send-msg $T text)
                  (girc:echo t "-!- Buffer not associated with a target."))
-             (girc:echo t "-!- Server not connected:" (girc:name (girc:connection (girc:current-buffer)))))
+             (girc:echo t "-!- Server not connected:" $S))
          (girc:echo t "-!- Buffer not associated with a connection.")))
     (girc:connection-buffer
      (girc:echo t "-!- Server buffer not associated with a target."))
@@ -437,7 +464,7 @@ channel and receive an error message, for example 474."
 
 ;; /part
 ;; /part #channel
-(defun part (&optional channel)
+(defcmd part (&optional channel)
   "Leave the given channel or the current channel, if no channel is given."
   (typecase (girc:current-buffer)
     (girc:target-buffer
@@ -447,9 +474,9 @@ channel and receive an error message, for example 474."
            (girc:remove-channel channel (girc:connection (girc:current-buffer)))
            (irc:part t channel))
          ;; if no channel was given, but the current buffer has a target
-         (if (girc:target (girc:current-buffer))
+         (if $T
              ;; recursively leave the current target
-             (part (girc:target (girc:current-buffer)))
+             (part $T)
              ;; if we call part from a buffer without a target, we need an argument
              (girc:echo t "-!- Required argument: /part <channel>"))))
     (girc:connection-buffer
@@ -463,7 +490,7 @@ channel and receive an error message, for example 474."
      (girc:echo t "-!- Buffer not associated with a server."))))
 
 ;; /quit
-(defun quit (&rest message)
+(defcmd quit (&rest message)
   "Quit the chat session, disconnect from the server."
   (typecase (girc:current-buffer)
     ((or girc:connection-buffer
@@ -476,7 +503,7 @@ channel and receive an error message, for example 474."
 
 ;; /quote args*
 ;; /quote WHOIS McParen
-(defun quote (&rest args)
+(defcmd quote (&rest args)
   "Send a raw, unmodified irc message to the current server."
   (typecase (girc:current-buffer)
     ((or girc:connection-buffer
@@ -492,7 +519,7 @@ channel and receive an error message, for example 474."
 ;; /whois nick
 ;; /whois nick nick
 ;; If nick is given a second time, additionally return 317 seconds idle, signon time
-(defun whois (&rest args)
+(define-command whois (&rest args)
   (typecase (girc:current-buffer)
     ((or girc:connection-buffer
          girc:target-buffer)
@@ -502,7 +529,7 @@ channel and receive an error message, for example 474."
     (girc:buffer
      (girc:echo t "-!- Buffer not associated with a server."))))
 
-(defun show (name)
+(define-command show (name)
   "Show the ui element given by its name."
   (alexandria:switch (name :test #'string=)
     ("buffer-line"
@@ -512,7 +539,7 @@ channel and receive an error message, for example 474."
     ("topic"
      (girc:show-topic-line t))))
 
-(defun hide (name)
+(define-command hide (name)
   "Hide the ui element given by its name."
   (alexandria:switch (name :test #'string=)
     ("buffer-line"

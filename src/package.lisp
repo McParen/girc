@@ -43,6 +43,7 @@
    display
    echo
    remove-buffer
+   print-buffer-list
    select-buffer
    changedp
    redraw
@@ -141,52 +142,18 @@
    "Functions that can be called from the command line.")
   (:use :common-lisp)
 
-  ;; Import some often used functions from the core package so we can
-  ;; use them without the package prefix, which also means we cant use
-  ;; them as commands at the same time.
-  ;; To add a new commend with one of these names, remove it from the
-  ;; import list first.
-  ;;(:import-from #:girc
-  ;; echo)
-
-  ;; shadow command names that collide with standard cl functions
+  ;; Command names that collide with standard cl functions have to be
+  ;; shadowed first.
   (:shadow
-   quote)
+   quote))
 
-  ;; To be recognized as /commands, symbols have to be exported from
-  ;; the command package, either here or by a separate call export function
-  ;; for example from gircrc.
-  (:export
-   ctcp
-   action
-   me
-   logo
-   show
-   hide
-   lisp
-   channel
-   buffer
-   info
-   server
-   connect
-   exit
-   join
-   msg
-   nick
-   say
-   part
-   query
-   quit
-   quote
-   whois))
-
-;; we cant add the local nickname within defpackage girc,
-;; we have to define all the packages first, then add the nicknames.
+;; We cant add the local nickname within defpackage girc,
+;; we have to define all the packages first, only _then_ add the nicknames.
 (add-package-local-nickname "CMD"  :de.anvi.girc.command :de.anvi.girc)
 (add-package-local-nickname "CONF" :de.anvi.girc.conf    :de.anvi.girc)
 (add-package-local-nickname "IRC"  :de.anvi.girc.irc     :de.anvi.girc)
 
-;; these abbrevs are now visible in the de.anvi.girc package, but we also need
+;; These abbrevs are now visible in the de.anvi.girc package, but we also need
 ;; the same abbrevs to be usable from every other package
 (add-package-local-nickname "CMD"  :de.anvi.girc.command :de.anvi.girc.command)
 (add-package-local-nickname "CONF" :de.anvi.girc.conf    :de.anvi.girc.command)

@@ -290,6 +290,23 @@ the message can be displayed."
   (grid-remove-nth (current-buffer-number) *buffer-column-grid*)
   (redraw))
 
+(defun print-buffer-list ()
+  (echo t "Number" "Connection" "Target" "Current")
+  (let ((n 0))
+    (labels ((show (buf)
+               (typecase buf
+                 (target-buffer
+                  (echo t n (name (connection buf)) (target buf) (currentp buf)))
+                 (connection-buffer
+                  (echo t n (name (connection buf)) (currentp buf)))
+                 (buffer
+                  (echo t n "main" (currentp buf))))
+               (incf n)
+               (when (crt:children buf)
+                 (dolist (i (crt:children buf))
+                   (show i)))))
+      (show *buffers*))))
+
 (defun debug-buffer-grid (grid function-name)
   (echo t
         (format nil "~A: ~A, ~A, ~A, ~A, ~A"

@@ -285,56 +285,70 @@ Default values have to be manually provided within the functions.
   (format t "2.~A "
           (equalp (parse-user-arguments '(a b c) "foo")
                   (list "foo" nil nil)))
-  ;; 3. too few arguments
+  ;; 3. this is equivalent to making b and c &optional, which is implied for all vars.
   (format t "3.~A "
+          (equalp (parse-user-arguments '(a &optional b c) "foo")
+                  (list "foo" nil nil)))
+  ;; 3. too few arguments
+  (format t "4.~A "
           (equalp (parse-user-arguments '(a) "")
                   (list nil)))
   ;; 4. rest parameter
   ;; they are collected, if the last parameter is &rest
-  (format t "4.~A "
+  (format t "5.~A "
           (equalp (parse-user-arguments '(a b &rest c) "foo bar baz qux")
                   (list "foo" "bar" "baz qux")))
   ;; 5. rest parameter but no rest arguments
   ;; a missing rest argument returns nothing, so lisp will return an empty list.
-  (format t "5.~A "
+  (format t "6.~A "
           (equalp (parse-user-arguments '(a b &rest c) "foo bar")
                   (list "foo" "bar")))
   ;; 6. rest parameter but no rest arguments
-  (format t "6.~A "
+  (format t "7.~A "
           (equalp (parse-user-arguments '(&rest a) "")
                   nil))
   ;; 7. no arguments
-  (format t "7.~A "
+  (format t "8.~A "
           (equalp (parse-user-arguments '(a b c &rest d) "")
                   (list nil nil nil)))
   ;; 8. no parameters
   ;; returns nil, or an empty list
-  (format t "8.~A "
+  (format t "9.~A "
           (equalp (parse-user-arguments '() "foo bar baz")
                   nil))
   ;; 9. keyword parameters
   ;; instead of returning all rest args in a single string, when the &key
   ;; keyword is present in the lambda list, the args are parsed and returned as :k v :k v
-  (format t "9.~A "
+  (format t "10.~A "
           (equalp (parse-user-arguments '(a b &rest c &key d e f) "a b :c 1 :d 2")
                   (list "a" "b" :C 1 :D 2)))
   ;; 10. the same as 9. but without they &key keyword.
   ;; here again the rest is returned in a single string.
-  (format t "10.~A "
+  (format t "11.~A "
           (equalp (parse-user-arguments '(a b &rest c) "a b :c 1 :d 2")
                   (list "a" "b" ":c 1 :d 2")))
   ;; 11. the same as 9, but without the &rest keyword
-  (format t "11.~A "
+  (format t "12.~A "
           (equalp (parse-user-arguments '(a b &key d e f) "a b :c 1 :d 2")
                   (list "a" "b" :C 1 :D 2)))
   ;; 12. only keyword args, no required args
-  (format t "12.~A "
+  (format t "13.~A "
           (equalp (parse-user-arguments '(&key d e f) ":c 1 :d 2")
                   (list :C 1 :D 2)))
   ;; 13. keyword args with default arguments
-  (format t "13.~A "
+  (format t "14.~A "
           (equalp (parse-user-arguments '(&key (a 1) b (c t)) ":b 2")
-                  (list :B 2))))
+                  (list :B 2)))
+  ;; 15. optional args with default arguments
+  (format t "15.~A "
+          (equalp (parse-user-arguments '(a &optional (b 1) (c 2)) "foo")
+                  (list "foo" nil nil)))
+  ;; 16. all keywords, optional args
+  (format t "16.~A "
+          (equalp (parse-user-arguments
+                   '(a &optional (b 1) (c 2) &key (d 3))
+                   "a b c :d 2 :r1 r1")
+                  (list "a" "b" "c" :D 2 :R1 "r1"))))
 
 ;; (parse-keyword-args ":a 1 :b 22 :c hello :d nil :e t")
 ;; => (:A 1 :B 22 :C "hello" :D NIL :E T)
@@ -357,15 +371,25 @@ is left as a string."
 (defun parse-user-arguments (lbd str)
   "Take a lambda list and a string, return a list of destructured tokens.
 
-Only as many tokens are parsed as there are parameters, the remaining
-tokens are ignored, unless the last parameter is a &rest parameter.
+Only as many tokens are parsed as there are required parameters.
 
-&rest is the only lambda keyword supported. It collects all remaining
-arguments in a single string, to mirror the irc :trailing parameter
-that may contain spaces.
+The remaining redundant tokens are silently ignored, unless &key or
+&rest keywords are present:
 
-If there are more parameters than string tokens, nil will be returned
-for each."
+If &key is present, the remaining tokens are parsed as alternating keys
+and values.
+
+If &rest is present, it does not collect all remaining arguments in a
+list like it would in Lisp, but collects them in a single string, in
+order to mirror the irc trailing parameter that may contain spaces.
+
+&key and &rest can not be used at the same time.
+
+All parameters are treated as optional whether the keyword &optional
+is present or not, so if there are more parameters than arguments,
+nil will be returned for each.
+
+The list of parsed tokens is then passed to the command handler."
   (let* ((restp (member '&rest     lbd))
          (keyp  (member '&key      lbd))
          (optp  (member '&optional lbd))

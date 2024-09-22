@@ -287,7 +287,7 @@ The allowed max length of the irc message including CRLF is 512 bytes."
         (if (connectedp connection)
             (write-irc-line rawmsg (stream connection))
             (echo t "-!- Server not connected:" (name connection)))
-        (echo t "-!- Buffer not associated with a connection."))))
+        (echo t "-!- Buffer not associated with a server."))))
 
 (defun send (connection command &optional params text)
   "Assemble an irc message, then send it as a string to the stream.
