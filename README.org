@@ -1,3 +1,23 @@
-[[file:img/girc.png]]
+#+TITLE: gIRC
 
-girc is a basic IRC client for the terminal.
+* Moving the repository to a free, non-profit hosting platform
+
+Due to threats of enforcement of two-factor authentication by 
+Microsoft, this repository has been migrated to Codeberg, a
+non-profit Git hosting platform for Free Software:
+
+- https://codeberg.org/McParen/girc
+
+This Github repository and the associated account will be
+deleted no later than 08. November 2024.
+
+
+
+* Contact
+
+Please direct any questions about girc, ncurses, croatoan or other
+terminal-related Lisp topics, libraries and applications to the
+following mailing list:
+
+- https://mailman.common-lisp.net/listinfo/croatoan-devel
+
